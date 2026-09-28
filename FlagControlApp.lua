@@ -13,9 +13,9 @@ local function isControllableFieldFlag(flag)
   return flag == FLAG_NONE or CONTROLLABLE_FLAGS[flag] == true
 end
 
-local CMRT_YELLOW = rgbm(1, 228 / 255, 0, 1)
-local CMRT_SETTINGS_TEXT = rgbm(180 / 255, 180 / 255, 180 / 255, 1)
-local CMRT_MUTED_TEXT = rgbm(209 / 255, 209 / 255, 209 / 255, 0.72)
+local FCA_YELLOW = rgbm(1, 228 / 255, 0, 1)
+local FCA_SETTINGS_TEXT = rgbm(180 / 255, 180 / 255, 180 / 255, 1)
+local FCA_MUTED_TEXT = rgbm(209 / 255, 209 / 255, 209 / 255, 0.72)
 local FLAG_BLUE_COLOR = rgbm(0.2, 0.62, 1.0, 1)
 local IGNORED_COLOR = rgbm(0.95, 0.65, 0.2, 1)
 local DANGER_RED = rgbm(0.85, 0.2, 0.15, 1)
@@ -40,8 +40,8 @@ local selectedBlueGroup = ''
 local manualBlueDrivers = {}
 local ignoredDrivers = {}
 
-local cmrtOverrideState = ac.connect({
-  ac.StructItem.key('app.FlagControlApp.cmrtOverride.v3'),
+local fcaOverrideState = ac.connect({
+  ac.StructItem.key('app.FlagControlApp.fcaOverride.v3'),
   active = ac.StructItem.boolean(),
   flag = ac.StructItem.int32(),
   className = ac.StructItem.string(48),
@@ -51,10 +51,10 @@ local cmrtOverrideState = ac.connect({
   manualBlueActive = ac.StructItem.boolean()
 }, false, ac.SharedNamespace.Shared)
 
-cmrtOverrideState.active = false
-cmrtOverrideState.flag = FLAG_NONE
-cmrtOverrideState.blueIgnored = false
-cmrtOverrideState.manualBlueActive = false
+fcaOverrideState.active = false
+fcaOverrideState.flag = FLAG_NONE
+fcaOverrideState.blueIgnored = false
+fcaOverrideState.manualBlueActive = false
 
 local flagSenderName = 'No flag update received'
 local onlinePeers = {}
@@ -114,7 +114,7 @@ local function applyBlueIgnore(driverName, sessionID, carIndex, ignored)
                   (name ~= '' and name == localName)
 
   if isLocal then
-    cmrtOverrideState.blueIgnored = ignored == true
+    fcaOverrideState.blueIgnored = ignored == true
     if ignored then
       pcall(physics.overrideRacingFlag, ac.FlagType.None)
     end
@@ -155,7 +155,7 @@ local function clearAllIgnores()
     ignoredDrivers[k] = nil
   end
 
-  cmrtOverrideState.blueIgnored = false
+  fcaOverrideState.blueIgnored = false
   sendBlueIgnore({
     protocol = 3,
     sessionID = -1,
@@ -218,14 +218,14 @@ local sendBlueAlert = ac.OnlineEvent({
   if sender == nil or sender.index == 0 or message.protocol ~= 1 then return end
   blueAlertActive = message.active
   blueAlertGroup = message.groupName
-  cmrtOverrideState.manualBlueActive = message.active
+  fcaOverrideState.manualBlueActive = message.active
 end)
 
 local function publishBlueAlert(active, groupName)
   if not isAdminUnlocked then return end
   blueAlertActive = active == true
   blueAlertGroup = groupName or ''
-  cmrtOverrideState.manualBlueActive = blueAlertActive
+  fcaOverrideState.manualBlueActive = blueAlertActive
   sendBlueAlert({ protocol = 1, active = blueAlertActive, groupName = blueAlertGroup }, true)
 end
 
@@ -272,8 +272,8 @@ local sendFlagState = ac.OnlineEvent({
   if not isControllableFieldFlag(message.flag) then return end
 
   fieldFlag = message.flag
-  cmrtOverrideState.active = message.overrideActive
-  cmrtOverrideState.flag = message.flag
+  fcaOverrideState.active = message.overrideActive
+  fcaOverrideState.flag = message.flag
   flagSenderName = ac.getDriverName(sender.index) or 'Lobby member'
 end)
 
@@ -282,8 +282,8 @@ local function publishFlag(flag)
   if not isControllableFieldFlag(flag) then return end
   fieldFlag = flag
   local overrideActive = flag ~= FLAG_NONE
-  cmrtOverrideState.active = overrideActive
-  cmrtOverrideState.flag = flag
+  fcaOverrideState.active = overrideActive
+  fcaOverrideState.flag = flag
   flagSenderName = 'You'
   sendFlagState({ protocol = 6, overrideActive = overrideActive, flag = flag }, true)
 end
@@ -325,7 +325,7 @@ function script.update(dt)
   local localName = ac.getDriverName(0) or ''
   local localSessionID = localCar and localCar.sessionID or -1
   local isLocalIgnored = isDriverIgnored(localName, localSessionID, 0)
-  cmrtOverrideState.blueIgnored = isLocalIgnored
+  fcaOverrideState.blueIgnored = isLocalIgnored
 
   local isLocalUnderBlue = sim.raceFlagType == ac.FlagType.FasterCar
   if isLocalIgnored and isLocalUnderBlue then
@@ -348,7 +348,7 @@ function script.update(dt)
     presenceTimer = 0
     sendPresence({
       protocol = 4,
-      className = cmrtOverrideState.className or '',
+      className = fcaOverrideState.className or '',
       isBlueFlag = isLocalUnderBlue,
       blueCauseCarIndex = sim.raceFlagCause or -1
     })
@@ -415,24 +415,24 @@ end
 
 local function drawAdminLoginPage()
   ui.newLine(3)
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_YELLOW)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_YELLOW)
   ui.setNextTextBold()
   ui.text('SERVER ADMIN ACCESS')
   ui.popStyleColor()
   ui.separator()
 
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
   ui.textWrapped('Log in with the server admin password to open race-control tools and broadcast flag changes to the lobby.')
   ui.popStyleColor()
   ui.newLine(2)
 
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('SERVER STATUS')
   ui.popStyleColor()
   ui.text(ac.getSim().isOnlineRace and 'Online session — server authentication required' or 'Offline session')
   ui.newLine(2)
 
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('ADMIN PASSWORD')
   ui.popStyleColor()
   ui.setNextItemWidth(ui.availableSpaceX())
@@ -450,7 +450,7 @@ local function drawAdminLoginPage()
     ui.popStyleColor()
   elseif loginCooldown > 0 then
     ui.newLine()
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
     ui.text(string.format('Please wait %.0f seconds before trying again.', math.ceil(loginCooldown)))
     ui.popStyleColor()
   end
@@ -472,7 +472,7 @@ local function drawAdminLoginPage()
 
   if adminCheckPending then
     ui.newLine()
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
     ui.text('Waiting for the server to confirm admin access…')
     ui.popStyleColor()
   end
@@ -506,8 +506,8 @@ local function getFlagButtonTextColor(flag)
 end
 
 local function getDriverClass(carIndex, sessionID)
-  if carIndex == 0 and cmrtOverrideState.className ~= '' then
-    return cmrtOverrideState.className
+  if carIndex == 0 and fcaOverrideState.className ~= '' then
+    return fcaOverrideState.className
   end
   if sessionID ~= nil and onlinePeers[sessionID] and onlinePeers[sessionID].className ~= '' then
     return onlinePeers[sessionID].className
@@ -698,10 +698,10 @@ local function drawLobbyPeers()
     peerNames[#peerNames + 1] = peer.name
   end
   table.sort(peerNames)
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text(string.format('LOBBY DRIVERS  %d', #peerNames))
   ui.popStyleColor()
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
   ui.textWrapped(table.concat(peerNames, ', '))
   ui.popStyleColor()
 end
@@ -710,11 +710,11 @@ local function drawFieldFlagsTab()
   ui.columns(2)
   ui.setColumnWidth(0, 220)
 
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('CURRENT FIELD FLAG')
   ui.popStyleColor()
   ui.textColored(getFieldFlagLabel(fieldFlag), getFieldFlagColor(fieldFlag))
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
   ui.text('Last update: ' .. flagSenderName)
   ui.text('Lobby: ' .. lobbyMessageStatus)
   ui.popStyleColor()
@@ -723,7 +723,7 @@ local function drawFieldFlagsTab()
   ui.nextColumn()
 
   ui.newLine(-5)
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('SELECT FLAG')
   ui.popStyleColor()
   local buttonWidth = (ui.availableSpaceX() - 8) / 2
@@ -741,12 +741,12 @@ local function drawFieldFlagsTab()
   end
 
   ui.newLine(-5)
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('SELECTED: ' .. getFieldFlagLabel(selectedFlag))
   ui.popStyleColor()
 
   local flagDeployed = fieldFlag ~= FLAG_NONE
-  ui.pushStyleColor(ui.StyleColor.Button, flagDeployed and rgbm(0.78, 0.12, 0.1, 1) or CMRT_YELLOW)
+  ui.pushStyleColor(ui.StyleColor.Button, flagDeployed and rgbm(0.78, 0.12, 0.1, 1) or FCA_YELLOW)
   ui.pushStyleColor(ui.StyleColor.Text, flagDeployed and rgbm(1, 1, 1, 1) or rgbm(0.08, 0.08, 0.08, 1))
   if ui.button(flagDeployed and 'UNDEPLOY FLAG' or 'DEPLOY FLAG', vec2(-0.1, 38)) then
     publishFlag(flagDeployed and FLAG_NONE or selectedFlag)
@@ -755,10 +755,10 @@ local function drawFieldFlagsTab()
   ui.columns(1)
 
   ui.separator()
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_YELLOW)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_YELLOW)
   ui.text('Field flags broadcast to all Flag Control clients in the session.')
   ui.popStyleColor()
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
   ui.text('App flag only; does not alter native server flag.')
   ui.popStyleColor()
 end
@@ -782,7 +782,7 @@ local function drawDriverBlueFlagsTab()
     ui.text(string.format('ACTIVE BLUE FLAGS: %d', activeUnignoredCount))
     ui.popStyleColor()
   else
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
     ui.text('ACTIVE BLUE FLAGS: 0')
     ui.popStyleColor()
   end
@@ -827,10 +827,10 @@ local function drawDriverBlueFlagsTab()
 
   if #activeBlueDrivers == 0 then
     ui.newLine(3)
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
     ui.text('No drivers are currently under blue flag.')
     ui.popStyleColor()
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
     ui.textWrapped('Cars being lapped in a race session, receiving blue flags from AC, or alerted manually will automatically appear here with an Ignore button.')
     ui.popStyleColor()
     ui.newLine(3)
@@ -842,7 +842,7 @@ local function drawDriverBlueFlagsTab()
     ui.setColumnWidth(3, 140)
     ui.setColumnWidth(4, 185)
 
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
     ui.text('STATUS')
     ui.nextColumn()
     ui.text('POS')
@@ -869,7 +869,7 @@ local function drawDriverBlueFlagsTab()
       ui.nextColumn()
 
       if d.isLocal then
-        ui.textColored(d.name .. ' (You)', CMRT_YELLOW)
+        ui.textColored(d.name .. ' (You)', FCA_YELLOW)
       else
         ui.text(d.name)
       end
@@ -879,7 +879,7 @@ local function drawDriverBlueFlagsTab()
       ui.text(carLabel)
       ui.nextColumn()
 
-      ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+      ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
       ui.text(d.causeDescription)
       ui.popStyleColor()
       ui.nextColumn()
@@ -913,7 +913,7 @@ local function drawDriverBlueFlagsTab()
     ui.setColumnWidth(2, 175)
     ui.setColumnWidth(3, 110)
 
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
     ui.text('POS')
     ui.nextColumn()
     ui.text('DRIVER')
@@ -931,7 +931,7 @@ local function drawDriverBlueFlagsTab()
       ui.nextColumn()
 
       if d.isLocal then
-        ui.textColored(d.name .. ' (You)', CMRT_YELLOW)
+        ui.textColored(d.name .. ' (You)', FCA_YELLOW)
       else
         ui.text(d.name)
       end
@@ -946,7 +946,7 @@ local function drawDriverBlueFlagsTab()
       elseif d.isUnderBlue then
         ui.textColored('Active Blue', FLAG_BLUE_COLOR)
       else
-        ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+        ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
         ui.text('Normal')
         ui.popStyleColor()
       end
@@ -974,11 +974,11 @@ local function drawDriverBlueFlagsTab()
   end
 
   if ui.treeNode('Manual Blue Alert & Class Options###manual_blue_node') then
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
     ui.textWrapped('Deploy a manual blue flag to all drivers in the selected group, or clear it.')
     ui.popStyleColor()
 
-    local localClass = cmrtOverrideState.className or ''
+    local localClass = fcaOverrideState.className or ''
     if localClass ~= '' then
       ui.text('Your class tag: ' .. localClass)
     end
@@ -1018,7 +1018,7 @@ end
 
 function script.windowAdmin(dt)
   ui.setNextTextBold()
-  ui.pushStyleColor(ui.StyleColor.Text, CMRT_YELLOW)
+  ui.pushStyleColor(ui.StyleColor.Text, FCA_YELLOW)
   ui.header('RACE CONTROL')
   ui.popStyleColor()
   drawAdminHeader()
