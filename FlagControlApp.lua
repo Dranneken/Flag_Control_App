@@ -21,6 +21,17 @@ local IGNORED_COLOR = rgbm(0.95, 0.65, 0.2, 1)
 local DANGER_RED = rgbm(0.85, 0.2, 0.15, 1)
 local SUCCESS_GREEN = rgbm(0.18, 0.65, 0.25, 1)
 
+-- Admin state
+local isAdminUnlocked = false         -- true once authenticated this session
+local isLoginDialogOpen = false       -- controls whether modal dialog is showing
+local loginPassword = ''              -- ephemeral password input buffer
+local loginError = ''                 -- error message shown inside the dialog
+local loginCooldown = 0               -- seconds until next attempt is allowed
+local adminCheckPending = false       -- waiting for ac.checkAdminPrivileges() refresh
+local adminCheckTimer = 0             -- time since checkAdminPrivileges was called
+local ADMIN_CHECK_TIMEOUT = 4         -- seconds to wait before treating check as failed
+local wasOnlineRace = nil
+
 local fieldFlag = FLAG_NONE
 local selectedFlag = FLAG_YELLOW
 local blueClassRules = {}
@@ -124,6 +135,7 @@ local sendBlueIgnore = ac.OnlineEvent({
 end)
 
 local function publishBlueIgnore(driverName, sessionID, carIndex, ignored)
+  if not isAdminUnlocked then return end
   applyBlueIgnore(driverName, sessionID, carIndex, ignored)
   sendBlueIgnore({
     protocol = 3,
@@ -135,6 +147,7 @@ local function publishBlueIgnore(driverName, sessionID, carIndex, ignored)
 end
 
 local function clearAllIgnores()
+  if not isAdminUnlocked then return end
   local keysToRemove = {}
   for k in pairs(ignoredDrivers) do
     keysToRemove[#keysToRemove + 1] = k
@@ -210,6 +223,7 @@ local sendBlueAlert = ac.OnlineEvent({
 end)
 
 local function publishBlueAlert(active, groupName)
+  if not isAdminUnlocked then return end
   blueAlertActive = active == true
   blueAlertGroup = groupName or ''
   cmrtOverrideState.manualBlueActive = blueAlertActive
@@ -265,6 +279,7 @@ local sendFlagState = ac.OnlineEvent({
 end)
 
 local function publishFlag(flag)
+  if not isAdminUnlocked then return end
   if not isControllableFieldFlag(flag) then return end
   fieldFlag = flag
   local overrideActive = flag ~= FLAG_NONE
@@ -276,6 +291,37 @@ end
 
 function script.update(dt)
   local sim = ac.getSim()
+
+  -- Admin: tick cooldown timer
+  if loginCooldown > 0 then
+    loginCooldown = loginCooldown - dt
+    if loginCooldown < 0 then loginCooldown = 0 end
+  end
+
+  -- Offline has no server admin to authenticate against. On entering an online
+  -- session, discard that offline unlock unless CSP reports native admin status.
+  if not sim.isOnlineRace then
+    isAdminUnlocked = true
+  elseif wasOnlineRace == false then
+    isAdminUnlocked = sim.isAdmin == true
+  end
+  wasOnlineRace = sim.isOnlineRace
+
+  -- Admin: poll ac.checkAdminPrivileges() result after a login attempt
+  if adminCheckPending then
+    adminCheckTimer = adminCheckTimer + dt
+    if sim.isAdmin then
+      isAdminUnlocked = true
+      adminCheckPending = false
+      isLoginDialogOpen = false
+      loginPassword = ''
+      loginError = ''
+    elseif adminCheckTimer >= ADMIN_CHECK_TIMEOUT then
+      adminCheckPending = false
+      loginError = 'Login failed. Check your admin password and try again.'
+      loginCooldown = 3
+    end
+  end
 
   local localCar = ac.getCar(0)
   local localName = ac.getDriverName(0) or ''
@@ -314,6 +360,138 @@ function script.update(dt)
   for sessionID, peer in pairs(onlinePeers) do
     if now - peer.lastSeen > 7 then
       onlinePeers[sessionID] = nil
+    end
+  end
+end
+
+-- Attempt to authenticate as server admin by sending /admin <password> via chat.
+-- On success: sim.isAdmin will flip to true; we poll it in script.update.
+local function attemptAdminLogin(password)
+  if loginCooldown > 0 then return end
+  if adminCheckPending then return end
+  if password == nil or password == '' then
+    loginError = 'Please enter your admin password.'
+    return
+  end
+
+  loginError = ''
+  -- Send the /admin command silently. ac.sendChatMessage returns false if rate-limited.
+  local sent = ac.sendChatMessage('/admin ' .. password)
+  if not sent then
+    loginError = 'Chat is rate-limited. Please wait a moment and try again.'
+    loginCooldown = 2
+    return
+  end
+
+  -- Immediately request CSP to refresh the isAdmin flag.
+  ac.checkAdminPrivileges()
+  adminCheckPending = true
+  adminCheckTimer = 0
+end
+
+-- Draws the admin status badge / login button in the app header.
+-- Call this after the title, before the separator.
+local function drawAdminHeader()
+  local sim = ac.getSim()
+  local w = ui.windowWidth()
+
+  if isAdminUnlocked then
+    -- Show a small green admin badge on the right side of the title row
+    ui.sameLine(w - 110)
+    ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.1, 0.45, 0.15, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.14, 0.55, 0.2, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.14, 0.55, 0.2, 1))
+    ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
+    if ui.button('\u2713 ADMIN MODE', vec2(100, 18)) then
+      -- Allow logout if online; offline mode stays unlocked
+      if sim.isOnlineRace then
+        isAdminUnlocked = false
+        adminCheckPending = false
+        loginError = ''
+        loginPassword = ''
+      end
+    end
+    if ui.itemHovered() and sim.isOnlineRace then
+      ui.setTooltip('Click to exit admin mode (you will need to log in again to re-enable controls)')
+    end
+    ui.popStyleColor(4)
+  else
+    -- Show login button
+    ui.sameLine(w - 110)
+    ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.28, 0.28, 0.55, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.35, 0.35, 0.72, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.42, 0.42, 0.85, 1))
+    ui.pushStyleColor(ui.StyleColor.Text, rgbm(0.78, 0.82, 1.0, 1))
+    if ui.button('ADMIN LOGIN', vec2(100, 18)) then
+      isLoginDialogOpen = true
+      loginPassword = ''
+      loginError = ''
+    end
+    ui.popStyleColor(4)
+
+    if isLoginDialogOpen then
+      ui.modalDialog('Admin Login', function()
+        ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+        ui.textWrapped('Enter the server admin password to unlock race control actions.')
+        ui.popStyleColor()
+
+        ui.newLine()
+        ui.setNextItemWidth(ui.windowWidth() - 20)
+        local updatedPassword, _, enterPressed = ui.inputText(
+          '##adminpw',
+          loginPassword,
+          bit.bor(ui.InputTextFlags.Password, ui.InputTextFlags.FocusByDefault)
+        )
+        loginPassword = updatedPassword
+
+        if loginError ~= '' then
+          ui.newLine()
+          ui.pushStyleColor(ui.StyleColor.Text, DANGER_RED)
+          ui.textWrapped(loginError)
+          ui.popStyleColor()
+        end
+
+        if adminCheckPending then
+          ui.newLine()
+          ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+          ui.text('Verifying...')
+          ui.popStyleColor()
+        end
+
+        ui.newLine()
+        ui.offsetCursorY(4)
+
+        local canSubmit = loginCooldown <= 0 and not adminCheckPending
+
+        if not canSubmit then
+          ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.25, 0.25, 0.25, 1))
+          ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.25, 0.25, 0.25, 1))
+          ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.25, 0.25, 0.25, 1))
+          ui.pushStyleColor(ui.StyleColor.Text, rgbm(0.5, 0.5, 0.5, 1))
+        end
+
+        if ui.modernButton('LOGIN', vec2((ui.windowWidth() - 8) * 0.6, 40), ui.ButtonFlags.None, ui.Icons.ArrowRight) then
+          if canSubmit then attemptAdminLogin(loginPassword) end
+        end
+        if enterPressed and canSubmit then attemptAdminLogin(loginPassword) end
+
+        if not canSubmit then ui.popStyleColor(4) end
+
+        ui.sameLine(0, 8)
+        if ui.modernButton('CANCEL', vec2(-1, 40), ui.ButtonFlags.None, ui.Icons.Cancel) then
+          isLoginDialogOpen = false
+          loginPassword = ''
+          loginError = ''
+          return true
+        end
+
+        -- Close dialog once authenticated
+        return isAdminUnlocked
+      end, false, function()
+        -- closeCallback — user clicked outside / pressed Escape
+        isLoginDialogOpen = false
+        loginPassword = ''
+      end)
     end
   end
 end
@@ -861,7 +1039,15 @@ function script.windowAdmin(dt)
   ui.pushStyleColor(ui.StyleColor.Text, CMRT_YELLOW)
   ui.header('RACE CONTROL')
   ui.popStyleColor()
+  drawAdminHeader()
   ui.separator()
+
+  if not isAdminUnlocked then
+    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.textWrapped('Race-control actions are locked. Log in with the server admin password to publish changes.')
+    ui.popStyleColor()
+    ui.separator()
+  end
 
   ui.tabBar('FlagControlAdminTabs', ui.TabBarFlags.FittingPolicyScroll, function ()
     ui.tabItem('Field Flags', function ()
