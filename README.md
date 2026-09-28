@@ -1,6 +1,6 @@
 # Flag Control
 
-A CSP Lua app for selecting and broadcasting a field-flag state to other Flag Control clients in the same Assetto Corsa multiplayer session.
+A CSP Lua app for Assetto Corsa that provides field-flag broadcasting (Green, Yellow, Red) and real-time **Blue Flag Control** with per-driver ignore management and multiplayer synchronization.
 
 ## Install
 
@@ -10,32 +10,38 @@ Copy the `FlagControlApp` folder into:
 assettocorsa/apps/lua/FlagControlApp
 ```
 
-Enable Flag Control in Content Manager/CSP's Lua app settings, then open **Flag Control Admin Mode** from the in-game app list.
+Enable Flag Control in Content Manager / CSP's Lua app settings, then open **Flag Control Admin Mode** from the in-game app list.
 
-Every player who should receive the app flag needs a compatible CSP installation and this app enabled. The app uses CSP `OnlineEvent` messages. Availability and delivery depend on the multiplayer server's messaging support; standard AC compatibility messaging may be rate-limited.
+Every player who should receive synced flags and ignore commands needs a compatible CSP installation and this app enabled. The app uses CSP `OnlineEvent` messages for zero-configuration multiplayer networking.
 
-## Use
+## Features
 
-The window shows the current app flag, the last sender, lobby messaging status, and discovered Flag Control clients.
+### 1. Field Flags
+- Controls session-wide flags: **Green**, **Yellow**, **Red**.
+- **DEPLOY FLAG** / **UNDEPLOY FLAG** toggling with live status and last-sender tracking.
+- Automatic peer discovery displaying all connected lobby members running the app.
 
-Select one of these flags, then press **DEPLOY FLAG**:
+### 2. Blue Flags Tab (Reworked)
+- **Live Detection**: Shows a real-time list of all drivers currently under blue flag.
+  - Automatically identifies cars being lapped on track using live position and spline distance.
+  - Receives direct blue flag states from other `FlagControlApp` clients in multiplayer.
+  - Identifies the approaching faster car, position, and time gap (e.g. `Lapped by M. Verstappen (P1) [0.8s]`).
+- **Ignore Button**:
+  - Each driver under blue flag has an **IGNORE** action button.
+  - When ignored, the driver's status changes to `[IGNORED]` and the blue flag is suppressed.
+  - If the ignored driver is running `FlagControlApp`, their client receives the command over `OnlineEvent` and suppresses native AC flag and CMRT HUD alerts.
+  - Ignored drivers can be restored at any time by pressing **RESTORE**.
+  - **IGNORE ALL ACTIVE** and **RESTORE ALL** quick action buttons are available at the top.
+- **All Session Drivers View**:
+  - Expandable section listing all drivers in the session with their position, car, and current blue flag status (`Normal`, `Active Blue`, `Ignored`).
+  - Allows Race Control to pre-emptively waive or ignore blue flags for any driver before they even reach lapping traffic.
+- **Manual Blue Alert**:
+  - Deploy manual blue flag warnings to a specific class group or field-wide.
 
-- Green
-- Yellow
-- Blue
-- Black
-- Penalty
-- Red
-- White
-- Checkered
-- Pit lane
-- Pit box
+### 3. CMRT Complete HUD Integration
+- Seamlessly communicates with `CMRT-Complete-HUD` via shared memory (`app.FlagControlApp.cmrtOverride.v3`).
+- When a driver is ignored by Flag Control, CMRT silences the blue flag visual warning, audio alert, and track map indicator.
 
-While a flag is deployed, the action button changes to **UNDEPLOY FLAG**. Press it to clear the app flag.
-
-## Important Limits
-
-- Admin Mode is not authenticated. Any player with the app can currently deploy or clear flags. Do not treat this prototype as admin-only race control.
-- Flags are app-level state sent to Flag Control clients. They do not change Assetto Corsa's native server or simulator flag.
-- CMRT integration is not included in this repository. It requires a separate local CMRT patch that reads Flag Control's shared state; that patch is currently for testing only.
-- Message delivery should be tested in the target lobby. A server may not support or may restrict CSP client messaging.
+## Important Notes
+- Admin Mode is currently unauthenticated; any player with the app can view and manage flags in this version.
+- Flag commands and ignores are broadcast to other clients running the app via CSP `OnlineEvent`.
