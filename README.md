@@ -43,6 +43,6 @@ Every player who should receive synced flags and ignore commands needs a compati
 - When a driver is ignored by Flag Control, CMRT silences the blue flag visual warning, audio alert, and track map indicator.
 
 ## Important Notes
-- Online race-control actions require authenticating with the dedicated server admin password through the app's **ADMIN LOGIN** dialog. Offline sessions remain unlocked.
+- Online race-control actions require authenticating with the dedicated server admin password on the app's login screen. Offline sessions remain unlocked.
 - Authentication gates actions in the local app. CSP `OnlineEvent` messages are exchanged between clients, and receivers currently accept messages from any app client, so this client-side check cannot prevent another client from publishing forged changes.
 - Flag commands and ignores are broadcast to other clients running the app via CSP `OnlineEvent`.

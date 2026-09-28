@@ -23,7 +23,6 @@ local SUCCESS_GREEN = rgbm(0.18, 0.65, 0.25, 1)
 
 -- Admin state
 local isAdminUnlocked = false         -- true once authenticated this session
-local isLoginDialogOpen = false       -- controls whether modal dialog is showing
 local loginPassword = ''              -- ephemeral password input buffer
 local loginError = ''                 -- error message shown inside the dialog
 local loginCooldown = 0               -- seconds until next attempt is allowed
@@ -313,7 +312,6 @@ function script.update(dt)
     if sim.isAdmin then
       isAdminUnlocked = true
       adminCheckPending = false
-      isLoginDialogOpen = false
       loginPassword = ''
       loginError = ''
     elseif adminCheckTimer >= ADMIN_CHECK_TIMEOUT then
@@ -389,110 +387,94 @@ local function attemptAdminLogin(password)
   adminCheckTimer = 0
 end
 
--- Draws the admin status badge / login button in the app header.
--- Call this after the title, before the separator.
+-- Draws the admin status badge in the app header.
 local function drawAdminHeader()
   local sim = ac.getSim()
-  local w = ui.windowWidth()
+  if not isAdminUnlocked then return end
 
-  if isAdminUnlocked then
-    -- Show a small green admin badge on the right side of the title row
-    ui.sameLine(w - 110)
-    ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.1, 0.45, 0.15, 1))
-    ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.14, 0.55, 0.2, 1))
-    ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.14, 0.55, 0.2, 1))
-    ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-    if ui.button('\u2713 ADMIN MODE', vec2(100, 18)) then
-      -- Allow logout if online; offline mode stays unlocked
-      if sim.isOnlineRace then
-        isAdminUnlocked = false
-        adminCheckPending = false
-        loginError = ''
-        loginPassword = ''
-      end
-    end
-    if ui.itemHovered() and sim.isOnlineRace then
-      ui.setTooltip('Click to exit admin mode (you will need to log in again to re-enable controls)')
-    end
-    ui.popStyleColor(4)
-  else
-    -- Show login button
-    ui.sameLine(w - 110)
-    ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.28, 0.28, 0.55, 1))
-    ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.35, 0.35, 0.72, 1))
-    ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.42, 0.42, 0.85, 1))
-    ui.pushStyleColor(ui.StyleColor.Text, rgbm(0.78, 0.82, 1.0, 1))
-    if ui.button('ADMIN LOGIN', vec2(100, 18)) then
-      isLoginDialogOpen = true
-      loginPassword = ''
+  -- Show a small green admin badge on the right side of the title row.
+  ui.sameLine(ui.windowWidth() - 110)
+  ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.1, 0.45, 0.15, 1))
+  ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.14, 0.55, 0.2, 1))
+  ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.14, 0.55, 0.2, 1))
+  ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
+  if ui.button('\u2713 ADMIN MODE', vec2(100, 18)) then
+    -- Allow local lockout while retaining offline access.
+    if sim.isOnlineRace then
+      isAdminUnlocked = false
+      adminCheckPending = false
       loginError = ''
+      loginPassword = ''
     end
-    ui.popStyleColor(4)
+  end
+  if ui.itemHovered() and sim.isOnlineRace then
+    ui.setTooltip('Click to lock race-control actions')
+  end
+  ui.popStyleColor(4)
+end
 
-    if isLoginDialogOpen then
-      ui.modalDialog('Admin Login', function()
-        ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
-        ui.textWrapped('Enter the server admin password to unlock race control actions.')
-        ui.popStyleColor()
+local function drawAdminLoginPage()
+  ui.newLine(3)
+  ui.pushStyleColor(ui.StyleColor.Text, CMRT_YELLOW)
+  ui.setNextTextBold()
+  ui.text('SERVER ADMIN ACCESS')
+  ui.popStyleColor()
+  ui.separator()
 
-        ui.newLine()
-        ui.setNextItemWidth(ui.windowWidth() - 20)
-        local updatedPassword, _, enterPressed = ui.inputText(
-          '##adminpw',
-          loginPassword,
-          bit.bor(ui.InputTextFlags.Password, ui.InputTextFlags.FocusByDefault)
-        )
-        loginPassword = updatedPassword
+  ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+  ui.textWrapped('Log in with the server admin password to open race-control tools and broadcast flag changes to the lobby.')
+  ui.popStyleColor()
+  ui.newLine(2)
 
-        if loginError ~= '' then
-          ui.newLine()
-          ui.pushStyleColor(ui.StyleColor.Text, DANGER_RED)
-          ui.textWrapped(loginError)
-          ui.popStyleColor()
-        end
+  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.text('SERVER STATUS')
+  ui.popStyleColor()
+  ui.text(ac.getSim().isOnlineRace and 'Online session — server authentication required' or 'Offline session')
+  ui.newLine(2)
 
-        if adminCheckPending then
-          ui.newLine()
-          ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
-          ui.text('Verifying...')
-          ui.popStyleColor()
-        end
+  ui.pushStyleColor(ui.StyleColor.Text, CMRT_SETTINGS_TEXT)
+  ui.text('ADMIN PASSWORD')
+  ui.popStyleColor()
+  ui.setNextItemWidth(ui.availableSpaceX())
+  local updatedPassword, _, enterPressed = ui.inputText(
+    '##adminpw',
+    loginPassword,
+    bit.bor(ui.InputTextFlags.Password, ui.InputTextFlags.FocusByDefault)
+  )
+  loginPassword = updatedPassword
 
-        ui.newLine()
-        ui.offsetCursorY(4)
+  if loginError ~= '' then
+    ui.newLine()
+    ui.pushStyleColor(ui.StyleColor.Text, DANGER_RED)
+    ui.textWrapped(loginError)
+    ui.popStyleColor()
+  elseif loginCooldown > 0 then
+    ui.newLine()
+    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.text(string.format('Please wait %.0f seconds before trying again.', math.ceil(loginCooldown)))
+    ui.popStyleColor()
+  end
 
-        local canSubmit = loginCooldown <= 0 and not adminCheckPending
+  ui.newLine(2)
+  local canSubmit = loginCooldown <= 0 and not adminCheckPending
+  if not canSubmit then
+    ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.25, 0.25, 0.25, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.25, 0.25, 0.25, 1))
+    ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.25, 0.25, 0.25, 1))
+    ui.pushStyleColor(ui.StyleColor.Text, rgbm(0.5, 0.5, 0.5, 1))
+  end
+  local buttonText = adminCheckPending and 'VERIFYING…' or 'LOG IN'
+  if ui.modernButton(buttonText, vec2(ui.availableSpaceX(), 40), ui.ButtonFlags.None, ui.Icons.ArrowRight) then
+    if canSubmit then attemptAdminLogin(loginPassword) end
+  end
+  if enterPressed and canSubmit then attemptAdminLogin(loginPassword) end
+  if not canSubmit then ui.popStyleColor(4) end
 
-        if not canSubmit then
-          ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.25, 0.25, 0.25, 1))
-          ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.25, 0.25, 0.25, 1))
-          ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.25, 0.25, 0.25, 1))
-          ui.pushStyleColor(ui.StyleColor.Text, rgbm(0.5, 0.5, 0.5, 1))
-        end
-
-        if ui.modernButton('LOGIN', vec2((ui.windowWidth() - 8) * 0.6, 40), ui.ButtonFlags.None, ui.Icons.ArrowRight) then
-          if canSubmit then attemptAdminLogin(loginPassword) end
-        end
-        if enterPressed and canSubmit then attemptAdminLogin(loginPassword) end
-
-        if not canSubmit then ui.popStyleColor(4) end
-
-        ui.sameLine(0, 8)
-        if ui.modernButton('CANCEL', vec2(-1, 40), ui.ButtonFlags.None, ui.Icons.Cancel) then
-          isLoginDialogOpen = false
-          loginPassword = ''
-          loginError = ''
-          return true
-        end
-
-        -- Close dialog once authenticated
-        return isAdminUnlocked
-      end, false, function()
-        -- closeCallback — user clicked outside / pressed Escape
-        isLoginDialogOpen = false
-        loginPassword = ''
-      end)
-    end
+  if adminCheckPending then
+    ui.newLine()
+    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
+    ui.text('Waiting for the server to confirm admin access…')
+    ui.popStyleColor()
   end
 end
 
@@ -1043,10 +1025,8 @@ function script.windowAdmin(dt)
   ui.separator()
 
   if not isAdminUnlocked then
-    ui.pushStyleColor(ui.StyleColor.Text, CMRT_MUTED_TEXT)
-    ui.textWrapped('Race-control actions are locked. Log in with the server admin password to publish changes.')
-    ui.popStyleColor()
-    ui.separator()
+    drawAdminLoginPage()
+    return
   end
 
   ui.tabBar('FlagControlAdminTabs', ui.TabBarFlags.FittingPolicyScroll, function ()
