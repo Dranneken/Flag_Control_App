@@ -29,7 +29,7 @@ Every player who should receive synced flags and ignore commands needs a compati
 - **Ignore Button**:
   - Each driver under blue flag has an **IGNORE** action button.
   - When ignored, the driver's status changes to `[IGNORED]` and the blue flag is suppressed.
-  - If the ignored driver is running `FlagControlApp`, their client receives the command over `OnlineEvent` and suppresses the native AC blue flag locally.
+  - If the ignored driver is running `FlagControlApp`, their client receives the command over `OnlineEvent` and suppresses the native AC blue flag locally; CMRT HUD alerts continue to work through the existing shared-memory integration.
   - Ignored drivers can be restored at any time by pressing **RESTORE**.
   - **IGNORE ALL ACTIVE** and **RESTORE ALL** quick action buttons are available at the top.
 - **All Session Drivers View**:
@@ -38,9 +38,10 @@ Every player who should receive synced flags and ignore commands needs a compati
 - **Manual Blue Alert**:
   - Deploy manual blue flag warnings to a specific class group or field-wide.
 
-### 3. FCA HUD Interface
-- Publishes flag, ignore, and manual-alert state through shared memory (`app.FlagControlApp.fcaOverride.v3`).
-- This interface is intended for the planned FCA HUD, so Flag Control can provide its own visual, audio, and track-map alerts without depending on another HUD app.
+### 3. HUD Integrations
+- Preserves the CMRT Complete HUD shared-memory interface (`app.FlagControlApp.cmrtOverride.v3`).
+- Also mirrors app-controlled flag, ignore, and manual-alert state to the FCA-owned key (`app.FlagControlApp.fcaOverride.v3`) for the planned custom HUD. It reads the local class from FCA first, then falls back to CMRT.
+- When a driver is ignored, CMRT continues to silence blue-flag visual, audio, and track-map alerts. The FCA key is ready for the custom HUD to implement its own alerts.
 
 ## Important Notes
 - Online race-control actions require authenticating with the dedicated server admin password on the app's login screen. Offline sessions remain unlocked.

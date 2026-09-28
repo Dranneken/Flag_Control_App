@@ -40,21 +40,41 @@ local selectedBlueGroup = ''
 local manualBlueDrivers = {}
 local ignoredDrivers = {}
 
-local fcaOverrideState = ac.connect({
-  ac.StructItem.key('app.FlagControlApp.fcaOverride.v3'),
-  active = ac.StructItem.boolean(),
-  flag = ac.StructItem.int32(),
-  className = ac.StructItem.string(48),
-  autoBlueFilterConfigured = ac.StructItem.boolean(),
-  autoBlueFilterEnabled = ac.StructItem.boolean(),
-  blueIgnored = ac.StructItem.boolean(),
-  manualBlueActive = ac.StructItem.boolean()
-}, false, ac.SharedNamespace.Shared)
+local function connectOverrideState(key)
+  return ac.connect({
+    ac.StructItem.key(key),
+    active = ac.StructItem.boolean(),
+    flag = ac.StructItem.int32(),
+    className = ac.StructItem.string(48),
+    autoBlueFilterConfigured = ac.StructItem.boolean(),
+    autoBlueFilterEnabled = ac.StructItem.boolean(),
+    blueIgnored = ac.StructItem.boolean(),
+    manualBlueActive = ac.StructItem.boolean()
+  }, false, ac.SharedNamespace.Shared)
+end
 
-fcaOverrideState.active = false
-fcaOverrideState.flag = FLAG_NONE
-fcaOverrideState.blueIgnored = false
-fcaOverrideState.manualBlueActive = false
+-- Keep CMRT's existing shared-memory contract while exposing the same state
+-- under an FCA-owned key for the planned custom HUD.
+local cmrtOverrideState = connectOverrideState('app.FlagControlApp.cmrtOverride.v3')
+local fcaOverrideState = connectOverrideState('app.FlagControlApp.fcaOverride.v3')
+
+local function setOverrideState(field, value)
+  cmrtOverrideState[field] = value
+  fcaOverrideState[field] = value
+end
+
+local function getLocalClassName()
+  local className = fcaOverrideState.className
+  if className == nil or className == '' then
+    className = cmrtOverrideState.className
+  end
+  return className or ''
+end
+
+setOverrideState('active', false)
+setOverrideState('flag', FLAG_NONE)
+setOverrideState('blueIgnored', false)
+setOverrideState('manualBlueActive', false)
 
 local flagSenderName = 'No flag update received'
 local onlinePeers = {}
@@ -114,7 +134,7 @@ local function applyBlueIgnore(driverName, sessionID, carIndex, ignored)
                   (name ~= '' and name == localName)
 
   if isLocal then
-    fcaOverrideState.blueIgnored = ignored == true
+    setOverrideState('blueIgnored', ignored == true)
     if ignored then
       pcall(physics.overrideRacingFlag, ac.FlagType.None)
     end
@@ -155,7 +175,7 @@ local function clearAllIgnores()
     ignoredDrivers[k] = nil
   end
 
-  fcaOverrideState.blueIgnored = false
+  setOverrideState('blueIgnored', false)
   sendBlueIgnore({
     protocol = 3,
     sessionID = -1,
@@ -218,14 +238,14 @@ local sendBlueAlert = ac.OnlineEvent({
   if sender == nil or sender.index == 0 or message.protocol ~= 1 then return end
   blueAlertActive = message.active
   blueAlertGroup = message.groupName
-  fcaOverrideState.manualBlueActive = message.active
+  setOverrideState('manualBlueActive', message.active)
 end)
 
 local function publishBlueAlert(active, groupName)
   if not isAdminUnlocked then return end
   blueAlertActive = active == true
   blueAlertGroup = groupName or ''
-  fcaOverrideState.manualBlueActive = blueAlertActive
+  setOverrideState('manualBlueActive', blueAlertActive)
   sendBlueAlert({ protocol = 1, active = blueAlertActive, groupName = blueAlertGroup }, true)
 end
 
@@ -272,8 +292,8 @@ local sendFlagState = ac.OnlineEvent({
   if not isControllableFieldFlag(message.flag) then return end
 
   fieldFlag = message.flag
-  fcaOverrideState.active = message.overrideActive
-  fcaOverrideState.flag = message.flag
+  setOverrideState('active', message.overrideActive)
+  setOverrideState('flag', message.flag)
   flagSenderName = ac.getDriverName(sender.index) or 'Lobby member'
 end)
 
@@ -282,8 +302,8 @@ local function publishFlag(flag)
   if not isControllableFieldFlag(flag) then return end
   fieldFlag = flag
   local overrideActive = flag ~= FLAG_NONE
-  fcaOverrideState.active = overrideActive
-  fcaOverrideState.flag = flag
+  setOverrideState('active', overrideActive)
+  setOverrideState('flag', flag)
   flagSenderName = 'You'
   sendFlagState({ protocol = 6, overrideActive = overrideActive, flag = flag }, true)
 end
@@ -325,7 +345,7 @@ function script.update(dt)
   local localName = ac.getDriverName(0) or ''
   local localSessionID = localCar and localCar.sessionID or -1
   local isLocalIgnored = isDriverIgnored(localName, localSessionID, 0)
-  fcaOverrideState.blueIgnored = isLocalIgnored
+  setOverrideState('blueIgnored', isLocalIgnored)
 
   local isLocalUnderBlue = sim.raceFlagType == ac.FlagType.FasterCar
   if isLocalIgnored and isLocalUnderBlue then
@@ -348,7 +368,7 @@ function script.update(dt)
     presenceTimer = 0
     sendPresence({
       protocol = 4,
-      className = fcaOverrideState.className or '',
+      className = getLocalClassName(),
       isBlueFlag = isLocalUnderBlue,
       blueCauseCarIndex = sim.raceFlagCause or -1
     })
@@ -506,8 +526,9 @@ local function getFlagButtonTextColor(flag)
 end
 
 local function getDriverClass(carIndex, sessionID)
-  if carIndex == 0 and fcaOverrideState.className ~= '' then
-    return fcaOverrideState.className
+  if carIndex == 0 then
+    local localClass = getLocalClassName()
+    if localClass ~= '' then return localClass end
   end
   if sessionID ~= nil and onlinePeers[sessionID] and onlinePeers[sessionID].className ~= '' then
     return onlinePeers[sessionID].className
@@ -978,7 +999,7 @@ local function drawDriverBlueFlagsTab()
     ui.textWrapped('Deploy a manual blue flag to all drivers in the selected group, or clear it.')
     ui.popStyleColor()
 
-    local localClass = fcaOverrideState.className or ''
+    local localClass = getLocalClassName()
     if localClass ~= '' then
       ui.text('Your class tag: ' .. localClass)
     end
