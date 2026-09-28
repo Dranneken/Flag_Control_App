@@ -398,7 +398,7 @@ local function drawAdminHeader()
   ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.14, 0.55, 0.2, 1))
   ui.pushStyleColor(ui.StyleColor.ButtonActive, rgbm(0.14, 0.55, 0.2, 1))
   ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-  if ui.button('\u2713 ADMIN MODE', vec2(100, 18)) then
+  if ui.button('ADMIN MODE', vec2(100, 18)) then
     -- Allow local lockout while retaining offline access.
     if sim.isOnlineRace then
       isAdminUnlocked = false
