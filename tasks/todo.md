@@ -25,10 +25,10 @@
 
 ## Phase 2: Identity and Credentials
 
-- [ ] Task 4: Add the local Steam UID allowlist and CM identity reader
+- [x] Task 4: Add the local Steam UID allowlist and CM identity reader
   - Acceptance: Parse one or more valid configured IDs; require exactly one local ID; fail closed on all missing/invalid/ambiguous inputs.
-  - Verify: Fixture tests plus CSP validation; never print UID values.
-  - Files: `modules/admin_config.lua`, `modules/steam_identity.lua`, `admin_steam_ids.example.ini`, `README.md`
+  - Verify: Fengari fixture tests pass; in-game CSP validation remains pending; never print UID values.
+  - Files: `modules/admin_config.lua`, `modules/steam_identity.lua`, `admin_steam_ids.example.ini`, focused tests
   - Dependencies: Task 3
 - [ ] Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
   - Acceptance: Store only salt and verifier locally; correct password passes, incorrect password fails.

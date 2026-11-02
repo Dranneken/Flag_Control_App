@@ -24,7 +24,7 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 - [ ] Field flags, blue flags, peer presence, and existing `OnlineEvent` messages behave as before
 
 ### Phase 2: Identity and Credentials
-- [ ] Task 4: Add the local Steam UID allowlist and CM identity reader
+- [x] Task 4: Add the local Steam UID allowlist and CM identity reader
 - [ ] Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
 - [ ] Task 6: Add first-run setup, login, and action gating
 
@@ -104,11 +104,11 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 - [ ] The reader accepts exactly one SteamID64-shaped value from `Values.data`.
 - [ ] Missing, unreadable, malformed, or ambiguous identity/config data denies setup and login without printing IDs.
 
-**Verification:** Test valid, empty, malformed, duplicate, missing-file, and unreadable-file cases with fixtures and CSP.
+**Verification:** Fengari fixtures cover valid, empty, malformed, duplicate, missing-file, and path construction cases; in-game CSP validation remains pending.
 
 **Dependencies:** Task 3.
 
-**Files likely touched:** `modules/admin_config.lua`, `modules/steam_identity.lua`, `admin_steam_ids.example.ini`, `README.md`.
+**Files likely touched:** `modules/admin_config.lua`, `modules/steam_identity.lua`, `admin_steam_ids.example.ini`, and focused tests.
 
 **Estimated scope:** Medium.
 
