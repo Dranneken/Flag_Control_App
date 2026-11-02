@@ -12,10 +12,10 @@
   - Verify: Fengari field/blue module tests passed; CSP two-client smoke test remains pending.
   - Files: `FlagControlApp.lua`, `modules/field_flags.lua`, `modules/blue_flags.lua`, focused tests
   - Dependencies: Task 1
-- [ ] Task 3: Extract the app UI into focused modules
+- [x] Task 3: Extract the app UI into focused modules
   - Acceptance: Preserve all tabs, controls, status text, and callbacks.
-  - Verify: Open each tab and exercise representative controls in CSP.
-  - Files: `FlagControlApp.lua`, `modules/ui.lua`
+  - Verify: Fengari UI module tests and Lua syntax checks passed; CSP tab interaction remains pending.
+  - Files: `FlagControlApp.lua`, `modules/ui.lua`, `modules/race_control_ui.lua`, focused tests
   - Dependencies: Task 2
 
 ## Checkpoint: Existing Behavior

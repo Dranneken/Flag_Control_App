@@ -17,7 +17,7 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 ### Phase 1: Lua Module Foundation
 - [x] Task 1: Extract app bootstrap and network transport
 - [x] Task 2: Extract field and blue-flag behavior
-- [ ] Task 3: Extract the app UI into focused modules
+- [x] Task 3: Extract the app UI into focused modules
 
 ### Checkpoint: Existing Behavior
 - [ ] App loads in CSP without Lua errors
@@ -87,11 +87,11 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 - [ ] UI callbacks call the same behavior functions as before.
 - [ ] CSP reload reports no missing-module or Lua errors.
 
-**Verification:** Open each app tab in CSP and exercise representative controls.
+**Verification:** Fengari UI tests and Lua syntax checks pass; open each app tab in CSP and exercise representative controls (pending).
 
 **Dependencies:** Task 2.
 
-**Files likely touched:** `FlagControlApp.lua`, `modules/ui.lua`.
+**Files likely touched:** `FlagControlApp.lua`, `modules/ui.lua`, `modules/race_control_ui.lua`, and focused tests.
 
 **Estimated scope:** Medium.
 
