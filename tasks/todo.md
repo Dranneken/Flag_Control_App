@@ -32,8 +32,8 @@
   - Dependencies: Task 3
 - [ ] Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
   - Acceptance: Store only salt and verifier locally; correct password passes, incorrect password fails.
-  - Verify: Compare reference vectors with Python `hashlib.pbkdf2_hmac`; measure target CSP latency.
-  - Files: `modules/password_kdf.lua`, `tests/password_kdf.lua`
+  - Verify: SHA-256/HMAC/PBKDF2 tests pass against Python reference vectors; measure time-budgeted work in target CSP.
+  - Files: `modules/sha256.lua`, `modules/pbkdf2.lua`, `modules/password_kdf.lua`, `modules/windows_crypto.lua`, focused tests
   - Dependencies: Task 3
 - [ ] Task 6: Add first-run setup, login, and action gating
   - Acceptance: Require allowlisted UID before setup/login and gate all local flag actions online and offline.

@@ -121,11 +121,11 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 - [ ] Correct passwords verify and incorrect passwords do not.
 - [ ] Work factor and latency are measured in the target CSP runtime; no silent reduction of the work factor.
 
-**Verification:** Compare known test vectors with Python's standard-library PBKDF2-HMAC-SHA256 and measure the in-game verification flow.
+**Verification:** SHA-256/HMAC/PBKDF2 tests pass against Python `hashlib` reference vectors; measure frame-time budget and full login duration in CSP (pending).
 
 **Dependencies:** Task 3.
 
-**Files likely touched:** `modules/password_kdf.lua`, `tests/password_kdf.lua`.
+**Files likely touched:** `modules/sha256.lua`, `modules/pbkdf2.lua`, `modules/password_kdf.lua`, `modules/windows_crypto.lua`, and focused tests.
 
 **Estimated scope:** Medium.
 
