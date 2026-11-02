@@ -26,8 +26,8 @@ The local gate replaces the current Assetto Corsa server-admin login as the gate
 
 ## Commands
 
-- Network module test: `npx --yes --package=fengari-node-cli fengari tests/network_test.lua`
-- Lua syntax validation: `npx --yes --package=fengari-node-cli fengari -e "assert(loadfile('FlagControlApp.lua')); assert(loadfile('modules/network.lua'))"`
+- Lua tests: `npx --yes --package=fengari-node-cli fengari tests/network_test.lua`, `tests/blue_flags_test.lua`, and `tests/field_flags_test.lua`
+- Lua syntax validation: `npx --yes --package=fengari-node-cli fengari -e "assert(loadfile('FlagControlApp.lua')); assert(loadfile('modules/network.lua')); assert(loadfile('modules/blue_flags.lua')); assert(loadfile('modules/field_flags.lua'))"`
 - In-game runtime validation: load or reload Flag Control in CSP and inspect the app log.
 - PBKDF2 validation: compare module outputs against Python's standard-library `hashlib.pbkdf2_hmac('sha256', ...)` known vectors.
 - Configuration validation: exercise missing, malformed, duplicate, and valid UID entries through the app's config parser.
@@ -37,11 +37,14 @@ Fengari provides an isolated Lua test/runtime check; acceptance still requires a
 ## Project Structure
 
 - `FlagControlApp.lua`: app bootstrap and window registration.
+- `modules/network.lua`: CSP `OnlineEvent` declarations, peer presence, and message dispatch.
+- `modules/field_flags.lua`: field-flag validation, state, and publish/apply behavior.
+- `modules/blue_flags.lua`: blue detection, ignore state, class rules, and manual alerts.
 - `modules/admin_config.lua`: parse the local admin UID allowlist.
 - `modules/steam_identity.lua`: read and validate the local Steam UID from Content Manager data.
 - `modules/password_kdf.lua`: salted PBKDF2-HMAC-SHA256 implementation and verifier helpers.
 - `modules/admin_auth.lua`: first-run password setup, login state, and lockout/cooldown behavior.
-- `modules/flags.lua`, `modules/network.lua`, and `modules/ui.lua`: existing flag state, `OnlineEvent` transport, and UI responsibilities.
+- `modules/ui.lua`: app tabs and control rendering.
 - `admin_steam_ids.example.ini`: tracked example with no personal IDs; the user's editable `admin_steam_ids.ini` remains local and untracked.
 
 Keep the existing public event keys, payload layouts, and field/blue-flag behavior unchanged.

@@ -5,12 +5,12 @@
 - [x] Task 1: Extract app bootstrap and network transport
   - Acceptance: Keep `FlagControlApp.lua` as entry point; preserve event keys, layouts, protocol values, send semantics, and peer discovery.
   - Verify: Reload in CSP and confirm another app client appears in the peer list.
-  - Files: `FlagControlApp.lua`, `modules/app_state.lua`, `modules/network.lua`
+  - Files: `FlagControlApp.lua`, `modules/network.lua`, `tests/network_test.lua`
   - Dependencies: None
-- [ ] Task 2: Extract field and blue-flag behavior
+- [x] Task 2: Extract field and blue-flag behavior
   - Acceptance: Preserve field flags, blue detection, ignore/restore, class rules, and manual alerts.
-  - Verify: Two-client CSP smoke test for field flags and blue ignore/restore.
-  - Files: `FlagControlApp.lua`, `modules/flags.lua`, `modules/blue_flags.lua`
+  - Verify: Fengari field/blue module tests passed; CSP two-client smoke test remains pending.
+  - Files: `FlagControlApp.lua`, `modules/field_flags.lua`, `modules/blue_flags.lua`, focused tests
   - Dependencies: Task 1
 - [ ] Task 3: Extract the app UI into focused modules
   - Acceptance: Preserve all tabs, controls, status text, and callbacks.

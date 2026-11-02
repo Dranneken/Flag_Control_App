@@ -3,16 +3,6 @@ local FLAG_GREEN = 1
 local FLAG_YELLOW = 2
 local FLAG_RED = 6
 
-local CONTROLLABLE_FLAGS = {
-  [FLAG_GREEN] = true,
-  [FLAG_YELLOW] = true,
-  [FLAG_RED] = true
-}
-
-local function isControllableFieldFlag(flag)
-  return flag == FLAG_NONE or CONTROLLABLE_FLAGS[flag] == true
-end
-
 local FCA_YELLOW = rgbm(1, 228 / 255, 0, 1)
 local FCA_SETTINGS_TEXT = rgbm(180 / 255, 180 / 255, 180 / 255, 1)
 local FCA_MUTED_TEXT = rgbm(209 / 255, 209 / 255, 209 / 255, 0.72)
@@ -31,14 +21,8 @@ local adminCheckTimer = 0             -- time since checkAdminPrivileges was cal
 local ADMIN_CHECK_TIMEOUT = 4         -- seconds to wait before treating check as failed
 local wasOnlineRace = nil
 
-local fieldFlag = FLAG_NONE
 local selectedFlag = FLAG_YELLOW
-local blueClassRules = {}
-local blueAlertActive = false
-local blueAlertGroup = ''
 local selectedBlueGroup = ''
-local manualBlueDrivers = {}
-local ignoredDrivers = {}
 
 local function connectOverrideState(key)
   return ac.connect({
@@ -76,144 +60,11 @@ setOverrideState('flag', FLAG_NONE)
 setOverrideState('blueIgnored', false)
 setOverrideState('manualBlueActive', false)
 
-local flagSenderName = 'No flag update received'
 local onlinePeers = {}
 local presenceTimer = 0
 local lobbyMessageStatus = 'Join an online lobby to discover peers'
 
-local function cleanString(s)
-  if type(s) ~= 'string' then return '' end
-  return (s:gsub('^%s*(.-)%s*$', '%1'))
-end
-
-local function classKey(className)
-  return cleanString(className):lower()
-end
-
-local function getDriverKey(driverName, sessionID, carIndex)
-  local name = classKey(driverName)
-  local sId = sessionID ~= nil and tostring(sessionID) or ''
-  local cIdx = carIndex ~= nil and tostring(carIndex) or '0'
-  return sId .. ':' .. cIdx .. ':' .. name
-end
-
-local function isDriverIgnored(driverName, sessionID, carIndex)
-  local key = getDriverKey(driverName, sessionID, carIndex)
-  if ignoredDrivers[key] == true then return true end
-
-  local name = classKey(driverName)
-  if name ~= '' and ignoredDrivers['name:' .. name] == true then return true end
-
-  if sessionID ~= nil and sessionID >= 0 and ignoredDrivers['s:' .. tostring(sessionID)] == true then
-    return true
-  end
-
-  return false
-end
-
-local function applyBlueIgnore(driverName, sessionID, carIndex, ignored)
-  local key = getDriverKey(driverName, sessionID, carIndex)
-  local name = classKey(driverName)
-  local sId = sessionID ~= nil and tostring(sessionID) or ''
-
-  if ignored then
-    ignoredDrivers[key] = true
-    if name ~= '' then ignoredDrivers['name:' .. name] = true end
-    if sId ~= '' then ignoredDrivers['s:' .. sId] = true end
-  else
-    ignoredDrivers[key] = nil
-    if name ~= '' then ignoredDrivers['name:' .. name] = nil end
-    if sId ~= '' then ignoredDrivers['s:' .. sId] = nil end
-  end
-
-  local localName = classKey(ac.getDriverName(0) or '')
-  local localCar = ac.getCar(0)
-  local localSessionID = localCar and localCar.sessionID or -1
-  local isLocal = (carIndex == 0) or
-                  (sessionID ~= nil and sessionID >= 0 and sessionID == localSessionID) or
-                  (name ~= '' and name == localName)
-
-  if isLocal then
-    setOverrideState('blueIgnored', ignored == true)
-    if ignored then
-      pcall(physics.overrideRacingFlag, ac.FlagType.None)
-    end
-  end
-end
-
 local network
-
-local function publishBlueIgnore(driverName, sessionID, carIndex, ignored)
-  if not isAdminUnlocked then return end
-  applyBlueIgnore(driverName, sessionID, carIndex, ignored)
-  network.sendBlueIgnore({
-    protocol = 3,
-    sessionID = sessionID or -1,
-    carIndex = carIndex or -1,
-    ignored = ignored == true,
-    driverName = driverName or ''
-  }, true)
-end
-
-local function clearAllIgnores()
-  if not isAdminUnlocked then return end
-  local keysToRemove = {}
-  for k in pairs(ignoredDrivers) do
-    keysToRemove[#keysToRemove + 1] = k
-  end
-  for _, k in ipairs(keysToRemove) do
-    ignoredDrivers[k] = nil
-  end
-
-  setOverrideState('blueIgnored', false)
-  network.sendBlueIgnore({
-    protocol = 3,
-    sessionID = -1,
-    carIndex = -1,
-    ignored = false,
-    driverName = '__ALL__'
-  }, true)
-end
-
-local function getBlueClassRule(className)
-  local key = classKey(className)
-  if key == '' then return nil end
-
-  local rule = blueClassRules[key]
-  if rule then return rule end
-
-  local storedGroup = ac.storage('FlagControl.BlueGroup.' .. key, className):get()
-  local storedAutoBlue = ac.storage('FlagControl.BlueAuto.' .. key, true):get()
-  rule = {
-    className = className,
-    groupName = storedGroup,
-    autoAllowed = storedAutoBlue
-  }
-  blueClassRules[key] = rule
-  return rule
-end
-
-local function applyBlueClassRule(className, groupName, autoAllowed)
-  local key = classKey(className)
-  if key == '' then return end
-  groupName = type(groupName) == 'string' and groupName or ''
-  autoAllowed = autoAllowed == true
-  blueClassRules[key] = {
-    className = className,
-    groupName = groupName,
-    autoAllowed = autoAllowed
-  }
-  ac.storage('FlagControl.BlueGroup.' .. key, groupName):set(groupName)
-  ac.storage('FlagControl.BlueAuto.' .. key, autoAllowed):set(autoAllowed)
-end
-
-local function publishBlueAlert(active, groupName)
-  if not isAdminUnlocked then return end
-  blueAlertActive = active == true
-  blueAlertGroup = groupName or ''
-  setOverrideState('manualBlueActive', blueAlertActive)
-  network.sendBlueAlert({ protocol = 1, active = blueAlertActive, groupName = blueAlertGroup }, true)
-end
 
 local flagOptions = {
   { value = FLAG_GREEN, label = 'GREEN FLAG' },
@@ -221,33 +72,31 @@ local flagOptions = {
   { value = FLAG_RED, label = 'RED FLAG' }
 }
 
-local function publishFlag(flag)
-  if not isAdminUnlocked then return end
-  if not isControllableFieldFlag(flag) then return end
-  fieldFlag = flag
-  local overrideActive = flag ~= FLAG_NONE
-  setOverrideState('active', overrideActive)
-  setOverrideState('flag', flag)
-  flagSenderName = 'You'
-  network.sendFlagState({ protocol = 6, overrideActive = overrideActive, flag = flag }, true)
-end
+local blueFlags = require('modules/blue_flags').create({
+  isAdminUnlocked = function () return isAdminUnlocked end,
+  setOverrideState = setOverrideState,
+  network = function () return network end,
+  onlinePeers = onlinePeers,
+  getLocalClassName = getLocalClassName
+})
+
+local fieldFlags = require('modules/field_flags').create({
+  flagNone = FLAG_NONE,
+  flagGreen = FLAG_GREEN,
+  flagYellow = FLAG_YELLOW,
+  flagRed = FLAG_RED,
+  isAdminUnlocked = function () return isAdminUnlocked end,
+  setOverrideState = setOverrideState,
+  network = function () return network end
+})
 
 network = require('modules/network').create({
   onlinePeers = onlinePeers,
-  applyBlueIgnore = applyBlueIgnore,
-  applyBlueClassRule = applyBlueClassRule,
-  applyBlueAlert = function (active, groupName)
-    blueAlertActive = active
-    blueAlertGroup = groupName
-    setOverrideState('manualBlueActive', active)
-  end,
-  isControllableFieldFlag = isControllableFieldFlag,
-  applyFieldFlag = function (flag, overrideActive, senderName)
-    fieldFlag = flag
-    setOverrideState('active', overrideActive)
-    setOverrideState('flag', flag)
-    flagSenderName = senderName or 'Lobby member'
-  end
+  applyBlueIgnore = blueFlags.applyIgnore,
+  applyBlueClassRule = blueFlags.applyBlueClassRule,
+  applyBlueAlert = blueFlags.applyAlert,
+  isControllableFieldFlag = fieldFlags.isControllableFieldFlag,
+  applyFieldFlag = fieldFlags.apply
 })
 
 function script.update(dt)
@@ -286,7 +135,7 @@ function script.update(dt)
   local localCar = ac.getCar(0)
   local localName = ac.getDriverName(0) or ''
   local localSessionID = localCar and localCar.sessionID or -1
-  local isLocalIgnored = isDriverIgnored(localName, localSessionID, 0)
+  local isLocalIgnored = blueFlags.isDriverIgnored(localName, localSessionID, 0)
   setOverrideState('blueIgnored', isLocalIgnored)
 
   local isLocalUnderBlue = sim.raceFlagType == ac.FlagType.FasterCar
@@ -467,194 +316,6 @@ local function getFlagButtonTextColor(flag)
   return rgbm(1, 1, 1, 1)
 end
 
-local function getDriverClass(carIndex, sessionID)
-  if carIndex == 0 then
-    local localClass = getLocalClassName()
-    if localClass ~= '' then return localClass end
-  end
-  if sessionID ~= nil and onlinePeers[sessionID] and onlinePeers[sessionID].className ~= '' then
-    return onlinePeers[sessionID].className
-  end
-  return ''
-end
-
-local function collectDriverBlueStates()
-  local sim = ac.getSim()
-  local trackLengthM = math.max(sim.trackLengthM or 1, 1)
-  local totalCars = sim.carsCount or 0
-  local allDrivers = {}
-  local activeBlueDrivers = {}
-
-  for i = 0, totalCars - 1 do
-    local car = ac.getCar(i)
-    if car and car.isConnected and car.isActive then
-      local dName = ac.getDriverName(i)
-      if not dName or dName == '' then
-        dName = car:driverName()
-        if not dName or dName == '' then dName = 'Car #' .. tostring(i) end
-      end
-
-      local cName = car:name()
-      if not cName or cName == '' then cName = car:id() or 'Unknown Car' end
-
-      local sID = car.sessionID
-      local racePos = car.racePosition or 0
-      local inPit = car.isInPitlane or car.isInPit
-      local isLocal = (i == 0)
-      local className = getDriverClass(i, sID)
-      local key = getDriverKey(dName, sID, i)
-      local isIgnored = isDriverIgnored(dName, sID, i)
-
-      local isUnderBlue = false
-      local causeText = ''
-      local causeCarIndex = -1
-      local gapSeconds = nil
-
-      if isLocal then
-        if sim.raceFlagType == ac.FlagType.FasterCar then
-          isUnderBlue = true
-          causeCarIndex = sim.raceFlagCause or -1
-          if causeCarIndex >= 0 and causeCarIndex < totalCars and causeCarIndex ~= i then
-            local fasterName = ac.getDriverName(causeCarIndex) or ('Car #' .. causeCarIndex)
-            local fasterCar = ac.getCar(causeCarIndex)
-            local fasterPos = fasterCar and fasterCar.racePosition and (' (P' .. fasterCar.racePosition .. ')') or ''
-            causeText = 'Approached by ' .. fasterName .. fasterPos
-          else
-            causeText = 'AC Blue Flag'
-          end
-        end
-      end
-
-      if not isUnderBlue and sID ~= nil and onlinePeers[sID] then
-        local peer = onlinePeers[sID]
-        if peer.isBlueFlag then
-          isUnderBlue = true
-          causeCarIndex = peer.blueCauseCarIndex or -1
-          if causeCarIndex >= 0 and causeCarIndex < totalCars then
-            local fasterName = ac.getDriverName(causeCarIndex) or ('Car #' .. causeCarIndex)
-            local fasterCar = ac.getCar(causeCarIndex)
-            local fasterPos = fasterCar and fasterCar.racePosition and (' (P' .. fasterCar.racePosition .. ')') or ''
-            causeText = 'Approached by ' .. fasterName .. fasterPos
-          else
-            causeText = 'Peer AC Blue Flag'
-          end
-        end
-      end
-
-      if not isUnderBlue and not inPit and trackLengthM > 100 then
-        if sim.raceSessionType == ac.SessionType.Race then
-          for j = 0, totalCars - 1 do
-            if j ~= i then
-              local otherCar = ac.getCar(j)
-              if otherCar and otherCar.isConnected and otherCar.isActive and not otherCar.isInPitlane then
-                local otherSpeedMs = otherCar.speedMs or 0
-                if otherSpeedMs > 8 then
-                  local isLapping = false
-                  local otherLaps = otherCar.sessionLapCount or otherCar.lapCount or 0
-                  local myLaps = car.sessionLapCount or car.lapCount or 0
-                  if otherLaps > myLaps then
-                    isLapping = true
-                  elseif (otherCar.drivenInRace or 0) - (car.drivenInRace or 0) > trackLengthM * 0.45 then
-                    isLapping = true
-                  end
-
-                  if isLapping then
-                    local mySpline = car.splinePosition or 0
-                    local otherSpline = otherCar.splinePosition or 0
-                    local splineDelta = (mySpline - otherSpline) % 1.0
-                    local distM = splineDelta * trackLengthM
-                    if distM > 0 and distM <= 80 then
-                      local gap = distM / math.max(otherSpeedMs, 14)
-                      if gap <= 2.2 then
-                        isUnderBlue = true
-                        causeCarIndex = j
-                        gapSeconds = gap
-                        local fasterName = ac.getDriverName(j) or ('Car #' .. j)
-                        local fasterPos = otherCar.racePosition and (' (P' .. otherCar.racePosition .. ')') or ''
-                        causeText = string.format('Lapped by %s%s [%.1fs]', fasterName, fasterPos, gap)
-                        break
-                      end
-                    end
-                  end
-                end
-              end
-            end
-          end
-        elseif (car.speedKmh or 0) < 110 and (car.lapCount or 0) == 0 then
-          for j = 0, totalCars - 1 do
-            if j ~= i then
-              local otherCar = ac.getCar(j)
-              if otherCar and otherCar.isConnected and otherCar.isActive and not otherCar.isInPitlane then
-                if (otherCar.speedKmh or 0) > 130 and otherCar.isLapValid then
-                  local splineDelta = ((car.splinePosition or 0) - (otherCar.splinePosition or 0)) % 1.0
-                  local distM = splineDelta * trackLengthM
-                  if distM > 0 and distM <= 70 then
-                    local gap = distM / math.max(otherCar.speedMs or 0, 20)
-                    if gap <= 2.0 then
-                      isUnderBlue = true
-                      causeCarIndex = j
-                      gapSeconds = gap
-                      local fasterName = ac.getDriverName(j) or ('Car #' .. j)
-                      causeText = string.format('Fast Traffic: %s [%.1fs]', fasterName, gap)
-                      break
-                    end
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-
-      if manualBlueDrivers[key] == true or
-         (blueAlertActive and className ~= '' and classKey(blueAlertGroup) == classKey(className)) then
-        isUnderBlue = true
-        causeText = 'Manual Race Control'
-      end
-
-      local entry = {
-        carIndex = i,
-        sessionID = sID,
-        name = dName,
-        carName = cName,
-        className = className,
-        racePosition = racePos,
-        isLocal = isLocal,
-        isUnderBlue = isUnderBlue,
-        isIgnored = isIgnored,
-        causeDescription = causeText ~= '' and causeText or 'Blue Flag',
-        causeCarIndex = causeCarIndex,
-        gapSeconds = gapSeconds,
-        key = key
-      }
-
-      allDrivers[#allDrivers + 1] = entry
-      if isUnderBlue or isIgnored then
-        activeBlueDrivers[#activeBlueDrivers + 1] = entry
-      end
-    end
-  end
-
-  table.sort(allDrivers, function (a, b)
-    if a.racePosition > 0 and b.racePosition > 0 then
-      return a.racePosition < b.racePosition
-    end
-    return a.carIndex < b.carIndex
-  end)
-
-  table.sort(activeBlueDrivers, function (a, b)
-    if a.isUnderBlue ~= b.isUnderBlue then
-      return a.isUnderBlue and not b.isUnderBlue
-    end
-    if a.racePosition > 0 and b.racePosition > 0 then
-      return a.racePosition < b.racePosition
-    end
-    return a.carIndex < b.carIndex
-  end)
-
-  return activeBlueDrivers, allDrivers
-end
-
 local function drawLobbyPeers()
   local peerNames = { (ac.getDriverName(0) or 'You') .. ' (you)' }
   for _, peer in pairs(onlinePeers) do
@@ -676,9 +337,9 @@ local function drawFieldFlagsTab()
   ui.pushStyleColor(ui.StyleColor.Text, FCA_SETTINGS_TEXT)
   ui.text('CURRENT FIELD FLAG')
   ui.popStyleColor()
-  ui.textColored(getFieldFlagLabel(fieldFlag), getFieldFlagColor(fieldFlag))
+  ui.textColored(getFieldFlagLabel(fieldFlags.getFlag()), getFieldFlagColor(fieldFlags.getFlag()))
   ui.pushStyleColor(ui.StyleColor.Text, FCA_MUTED_TEXT)
-  ui.text('Last update: ' .. flagSenderName)
+  ui.text('Last update: ' .. fieldFlags.getSenderName())
   ui.text('Lobby: ' .. lobbyMessageStatus)
   ui.popStyleColor()
   drawLobbyPeers()
@@ -708,11 +369,11 @@ local function drawFieldFlagsTab()
   ui.text('SELECTED: ' .. getFieldFlagLabel(selectedFlag))
   ui.popStyleColor()
 
-  local flagDeployed = fieldFlag ~= FLAG_NONE
+  local flagDeployed = fieldFlags.getFlag() ~= FLAG_NONE
   ui.pushStyleColor(ui.StyleColor.Button, flagDeployed and rgbm(0.78, 0.12, 0.1, 1) or FCA_YELLOW)
   ui.pushStyleColor(ui.StyleColor.Text, flagDeployed and rgbm(1, 1, 1, 1) or rgbm(0.08, 0.08, 0.08, 1))
   if ui.button(flagDeployed and 'UNDEPLOY FLAG' or 'DEPLOY FLAG', vec2(-0.1, 38)) then
-    publishFlag(flagDeployed and FLAG_NONE or selectedFlag)
+    fieldFlags.publish(flagDeployed and FLAG_NONE or selectedFlag)
   end
   ui.popStyleColor(2)
   ui.columns(1)
@@ -727,7 +388,7 @@ local function drawFieldFlagsTab()
 end
 
 local function drawDriverBlueFlagsTab()
-  local activeBlueDrivers, allDrivers = collectDriverBlueStates()
+  local activeBlueDrivers, allDrivers = blueFlags.collectDriverBlueStates()
 
   local ignoredCount = 0
   local activeUnignoredCount = 0
@@ -769,7 +430,7 @@ local function drawDriverBlueFlagsTab()
       if ui.button('IGNORE ALL ACTIVE', vec2(132, 24)) then
         for _, d in ipairs(activeBlueDrivers) do
           if not d.isIgnored then
-            publishBlueIgnore(d.name, d.sessionID, d.carIndex, true)
+            blueFlags.publishIgnore(d.name, d.sessionID, d.carIndex, true)
           end
         end
       end
@@ -780,7 +441,7 @@ local function drawDriverBlueFlagsTab()
       ui.pushStyleColor(ui.StyleColor.Button, SUCCESS_GREEN)
       ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
       if ui.button('RESTORE ALL', vec2(96, 24)) then
-        clearAllIgnores()
+        blueFlags.clearAllIgnores()
       end
       ui.popStyleColor(2)
     end
@@ -851,14 +512,14 @@ local function drawDriverBlueFlagsTab()
         ui.pushStyleColor(ui.StyleColor.Button, SUCCESS_GREEN)
         ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
         if ui.button('RESTORE##' .. d.key, vec2(ui.availableSpaceX(), 22)) then
-          publishBlueIgnore(d.name, d.sessionID, d.carIndex, false)
+          blueFlags.publishIgnore(d.name, d.sessionID, d.carIndex, false)
         end
         ui.popStyleColor(2)
       else
         ui.pushStyleColor(ui.StyleColor.Button, DANGER_RED)
         ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
         if ui.button('IGNORE##' .. d.key, vec2(ui.availableSpaceX(), 22)) then
-          publishBlueIgnore(d.name, d.sessionID, d.carIndex, true)
+          blueFlags.publishIgnore(d.name, d.sessionID, d.carIndex, true)
         end
         ui.popStyleColor(2)
       end
@@ -919,14 +580,14 @@ local function drawDriverBlueFlagsTab()
         ui.pushStyleColor(ui.StyleColor.Button, SUCCESS_GREEN)
         ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
         if ui.button('RESTORE##all_' .. d.key, vec2(ui.availableSpaceX(), 20)) then
-          publishBlueIgnore(d.name, d.sessionID, d.carIndex, false)
+          blueFlags.publishIgnore(d.name, d.sessionID, d.carIndex, false)
         end
         ui.popStyleColor(2)
       else
         ui.pushStyleColor(ui.StyleColor.Button, d.isUnderBlue and DANGER_RED or rgbm(0.3, 0.3, 0.3, 1))
         ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
         if ui.button('IGNORE##all_' .. d.key, vec2(ui.availableSpaceX(), 20)) then
-          publishBlueIgnore(d.name, d.sessionID, d.carIndex, true)
+          blueFlags.publishIgnore(d.name, d.sessionID, d.carIndex, true)
         end
         ui.popStyleColor(2)
       end
@@ -949,15 +610,15 @@ local function drawDriverBlueFlagsTab()
     local groups = {}
     local seen = {}
     for _, d in ipairs(allDrivers) do
-      if d.className ~= '' and not seen[classKey(d.className)] then
-        seen[classKey(d.className)] = true
+      if d.className ~= '' and not seen[blueFlags.classKey(d.className)] then
+        seen[blueFlags.classKey(d.className)] = true
         groups[#groups + 1] = d.className
       end
     end
     table.sort(groups)
 
     if #groups > 0 then
-      if selectedBlueGroup == '' or not seen[classKey(selectedBlueGroup)] then
+      if selectedBlueGroup == '' or not seen[blueFlags.classKey(selectedBlueGroup)] then
         selectedBlueGroup = groups[1]
       end
       ui.setNextItemWidth(250)
@@ -967,12 +628,12 @@ local function drawDriverBlueFlagsTab()
         end
       end)
       ui.sameLine(0, 10)
-      if ui.button(blueAlertActive and 'CLEAR MANUAL BLUE' or 'DEPLOY BLUE TO GROUP', vec2(200, 24)) then
-        publishBlueAlert(not blueAlertActive, selectedBlueGroup)
+      if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or 'DEPLOY BLUE TO GROUP', vec2(200, 24)) then
+        blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), selectedBlueGroup)
       end
     else
-      if ui.button(blueAlertActive and 'CLEAR MANUAL BLUE' or 'DEPLOY BLUE FIELD-WIDE', vec2(220, 24)) then
-        publishBlueAlert(not blueAlertActive, '')
+      if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or 'DEPLOY BLUE FIELD-WIDE', vec2(220, 24)) then
+        blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), '')
       end
     end
     ui.treePop()

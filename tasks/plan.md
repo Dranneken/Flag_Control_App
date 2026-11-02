@@ -16,7 +16,7 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 
 ### Phase 1: Lua Module Foundation
 - [x] Task 1: Extract app bootstrap and network transport
-- [ ] Task 2: Extract field and blue-flag behavior
+- [x] Task 2: Extract field and blue-flag behavior
 - [ ] Task 3: Extract the app UI into focused modules
 
 ### Checkpoint: Existing Behavior
@@ -57,7 +57,7 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 
 **Dependencies:** None.
 
-**Files likely touched:** `FlagControlApp.lua`, `modules/app_state.lua`, `modules/network.lua`.
+**Files likely touched:** `FlagControlApp.lua`, `modules/network.lua`, `tests/network_test.lua`.
 
 **Estimated scope:** Medium.
 
@@ -70,11 +70,11 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 - [ ] Ignore, restore, class-rule, and manual-alert behavior remains unchanged.
 - [ ] No mutating path is lost during extraction.
 
-**Verification:** CSP smoke test of field flag deploy/undeploy and blue ignore/restore with two clients.
+**Verification:** `npx --yes --package=fengari-node-cli fengari tests/field_flags_test.lua` and `tests/blue_flags_test.lua`; CSP two-client smoke test remains part of the existing-behavior checkpoint.
 
 **Dependencies:** Task 1.
 
-**Files likely touched:** `FlagControlApp.lua`, `modules/flags.lua`, `modules/blue_flags.lua`.
+**Files likely touched:** `FlagControlApp.lua`, `modules/field_flags.lua`, `modules/blue_flags.lua`, and focused tests.
 
 **Estimated scope:** Medium.
 
