@@ -42,7 +42,7 @@ function adminConfig.load()
 
   local file = io.open(path, 'rb')
   if not file then return nil, 'allowlist_unavailable' end
-  local contents = file:read('*a')
+  local contents = file:read(MAX_CONFIG_BYTES + 1)
   local closed = file:close()
   if type(contents) ~= 'string' or not closed then
     return nil, 'allowlist_unavailable'

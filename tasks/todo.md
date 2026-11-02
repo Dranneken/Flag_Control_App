@@ -30,26 +30,27 @@
   - Verify: Fengari fixture tests pass; in-game CSP validation remains pending; never print UID values.
   - Files: `modules/admin_config.lua`, `modules/steam_identity.lua`, `admin_steam_ids.example.ini`, focused tests
   - Dependencies: Task 3
-- [ ] Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
+- [x] Task 5: Add PBKDF2-HMAC-SHA256 password storage (CSP timing validation pending)
   - Acceptance: Store only salt and verifier locally; correct password passes, incorrect password fails.
-  - Verify: SHA-256/HMAC/PBKDF2 tests pass against Python reference vectors; measure time-budgeted work in target CSP.
+  - Verify: SHA-256/HMAC/PBKDF2 reference-vector tests pass; measure frame-time budget and full login duration in target CSP.
   - Files: `modules/sha256.lua`, `modules/pbkdf2.lua`, `modules/password_kdf.lua`, `modules/windows_crypto.lua`, focused tests
   - Dependencies: Task 3
-- [ ] Task 6: Add first-run setup, login, and action gating
+- [x] Task 6: Add first-run setup, login, and action gating (CSP validation pending)
   - Acceptance: Require allowlisted UID before setup/login and gate all local flag actions online and offline.
-  - Verify: First-run, login, bad password, unlisted UID, restart, online, and offline CSP tests.
-  - Files: `modules/admin_auth.lua`, `modules/ui.lua`, `modules/flags.lua`, `FlagControlApp.lua`
+  - Verify: Automated setup, login, reset, invalid-identity/config, and field/blue-action gating tests pass; validate restart, online, and offline flows in CSP.
+  - Files: `modules/admin_auth.lua`, `modules/ui.lua`, `modules/field_flags.lua`, `modules/blue_flags.lua`, `FlagControlApp.lua`
   - Dependencies: Tasks 4 and 5
 
 ## Checkpoint: Local Admin Gate
 
-- [ ] Allowed UID and correct password unlock local actions.
-- [ ] Invalid identity/config/password remains locked.
-- [ ] Existing remote event receive behavior is unchanged.
+- [x] Allowlisted identity and correct password unlock local actions in automated tests.
+- [x] Invalid identity/config/password remains locked in automated tests.
+- [x] Existing remote event receive behavior is unchanged in module tests.
+- [ ] Validate actual Content Manager identity, allowlist, setup/login/restart, and online/offline access in CSP.
 
 ## Phase 3: Documentation and Final Verification
 
-- [ ] Task 7: Document local setup, limitations, and recovery
+- [x] Task 7: Document local setup, limitations, and recovery
   - Acceptance: Explain UID allowlist setup, local password flow, recovery, and client-side authorization limitation without exposing credentials.
   - Verify: Check documentation against actual implementation.
   - Files: `README.md`, `admin_steam_ids.example.ini`

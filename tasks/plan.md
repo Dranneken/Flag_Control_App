@@ -25,17 +25,18 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 
 ### Phase 2: Identity and Credentials
 - [x] Task 4: Add the local Steam UID allowlist and CM identity reader
-- [ ] Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
-- [ ] Task 6: Add first-run setup, login, and action gating
+- [x] Task 5: Add PBKDF2-HMAC-SHA256 password storage (CSP timing validation pending)
+- [x] Task 6: Add first-run setup, login, and action gating (CSP validation pending)
 
 ### Checkpoint: Local Admin Gate
-- [ ] Allowlisted UID plus correct password unlocks controls
-- [ ] Unlisted UID and invalid identity/configuration fail closed
-- [ ] App remains responsive during password verification
+- [x] Allowlisted identity plus correct password unlocks controls in automated tests
+- [x] Unlisted identity and invalid identity/configuration fail closed in automated tests
+- [x] Existing `OnlineEvent` receive behavior remains unchanged in module tests
+- [ ] App remains responsive during password verification in CSP
 - [ ] Online and offline flows are verified in CSP
 
 ### Phase 3: Documentation and Final Verification
-- [ ] Task 7: Document local setup, limitations, and recovery
+- [x] Task 7: Document local setup, limitations, and recovery
 
 ### Checkpoint: Complete
 - [ ] All spec success criteria pass
@@ -112,14 +113,14 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 
 **Estimated scope:** Medium.
 
-### Task 5: Add and verify PBKDF2-HMAC-SHA256 password storage
+### Task 5: Add PBKDF2-HMAC-SHA256 password storage
 
 **Description:** Implement password derivation in a separate module, store only salt and verifier in local CSP storage, and verify against independent reference vectors.
 
 **Acceptance criteria:**
-- [ ] No plaintext password is persisted or logged.
-- [ ] Correct passwords verify and incorrect passwords do not.
-- [ ] Work factor and latency are measured in the target CSP runtime; no silent reduction of the work factor.
+- [x] No plaintext password is persisted or logged.
+- [x] Correct passwords verify and incorrect passwords do not.
+- [x] Work factor remains fixed and is not silently reduced; CSP latency measurement is pending.
 
 **Verification:** SHA-256/HMAC/PBKDF2 tests pass against Python `hashlib` reference vectors; measure frame-time budget and full login duration in CSP (pending).
 
@@ -134,15 +135,15 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 **Description:** Require an allowlisted local UID before password setup or login, then gate all local flag-control actions behind the password check for online and offline sessions.
 
 **Acceptance criteria:**
-- [ ] An allowlisted UID can create the local password once and log in on later runs.
-- [ ] An unlisted UID cannot create or use the credential; a UID/config read failure remains locked.
-- [ ] All local field-flag, ignore, class-rule, and manual-alert actions are gated; remote event receive behavior is unchanged.
+- [x] An allowlisted UID can create the local password once and log in on later runs.
+- [x] An unlisted UID cannot create or use the credential; a UID/config read failure remains locked.
+- [x] All local field-flag, ignore, class-rule, and manual-alert actions are gated; remote event receive behavior is unchanged.
 
-**Verification:** Run first-use, valid login, wrong password, unlisted UID, restart, offline, and online cases in CSP.
+**Verification:** Automated setup/login/reset and gating tests pass; actual identity, restart, offline, and online cases remain pending in CSP.
 
 **Dependencies:** Tasks 4 and 5.
 
-**Files likely touched:** `modules/admin_auth.lua`, `modules/ui.lua`, `modules/flags.lua`, `FlagControlApp.lua`.
+**Files likely touched:** `modules/admin_auth.lua`, `modules/ui.lua`, `modules/field_flags.lua`, `modules/blue_flags.lua`, `FlagControlApp.lua`.
 
 **Estimated scope:** Medium.
 
@@ -151,9 +152,9 @@ Refactor Flag Control into focused Lua modules, add a per-install Steam UID allo
 **Description:** Document how to copy/edit the local UID allowlist, set and use the password, and recover if the local credential is lost.
 
 **Acceptance criteria:**
-- [ ] Documentation does not include real UIDs, passwords, or password verifiers.
-- [ ] It clearly states that the local gate does not authenticate remote messages.
-- [ ] Recovery steps do not silently bypass the UID allowlist.
+- [x] Documentation does not include real UIDs, passwords, or password verifiers.
+- [x] It clearly states that the local gate does not authenticate remote messages.
+- [x] Recovery steps do not silently bypass the UID allowlist.
 
 **Verification:** Review documentation against the implemented setup and recovery flows.
 

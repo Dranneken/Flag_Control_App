@@ -41,8 +41,8 @@ io.open = function (path, mode)
   openedPath = path
   assert(mode == 'rb')
   return {
-    read = function (_, format)
-      assert(format == '*a')
+    read = function (_, maxBytes)
+      assert(maxBytes == 16385)
       return '76561190000000000\n'
     end,
     close = function () return true end

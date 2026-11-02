@@ -11,17 +11,6 @@ local IGNORED_COLOR = rgbm(0.95, 0.65, 0.2, 1)
 local DANGER_RED = rgbm(0.85, 0.2, 0.15, 1)
 local SUCCESS_GREEN = rgbm(0.18, 0.65, 0.25, 1)
 
--- Admin state
-local isAdminUnlocked = false         -- true once authenticated this session
-local loginPassword = ''              -- ephemeral password input buffer
-local loginError = ''                 -- error message shown inside the dialog
-local loginCooldown = 0               -- seconds until next attempt is allowed
-local adminCheckPending = false       -- waiting for ac.checkAdminPrivileges() refresh
-local adminCheckTimer = 0             -- time since checkAdminPrivileges was called
-local ADMIN_CHECK_TIMEOUT = 4         -- seconds to wait before treating check as failed
-local wasOnlineRace = nil
-
-
 local function connectOverrideState(key)
   return ac.connect({
     ac.StructItem.key(key),
@@ -62,10 +51,23 @@ local onlinePeers = {}
 local presenceTimer = 0
 local lobbyMessageStatus = 'Join an online lobby to discover peers'
 
+local adminConfig = require('modules/admin_config')
+local steamIdentity = require('modules/steam_identity')
+local credentialStorage = ac.storage('localAdminCredential', '')
+local adminAuth = require('modules/admin_auth').create({
+  adminConfig = adminConfig,
+  steamIdentity = steamIdentity,
+  credentialStorage = credentialStorage
+})
+
+local function isAdminUnlocked()
+  return adminAuth.isUnlocked()
+end
+
 local network
 
 local blueFlags = require('modules/blue_flags').create({
-  isAdminUnlocked = function () return isAdminUnlocked end,
+  isAdminUnlocked = isAdminUnlocked,
   setOverrideState = setOverrideState,
   network = function () return network end,
   onlinePeers = onlinePeers,
@@ -77,7 +79,7 @@ local fieldFlags = require('modules/field_flags').create({
   flagGreen = FLAG_GREEN,
   flagYellow = FLAG_YELLOW,
   flagRed = FLAG_RED,
-  isAdminUnlocked = function () return isAdminUnlocked end,
+  isAdminUnlocked = isAdminUnlocked,
   setOverrideState = setOverrideState,
   network = function () return network end
 })
@@ -116,36 +118,7 @@ network = require('modules/network').create({
 
 function script.update(dt)
   local sim = ac.getSim()
-
-  -- Admin: tick cooldown timer
-  if loginCooldown > 0 then
-    loginCooldown = loginCooldown - dt
-    if loginCooldown < 0 then loginCooldown = 0 end
-  end
-
-  -- Offline has no server admin to authenticate against. On entering an online
-  -- session, discard that offline unlock unless CSP reports native admin status.
-  if not sim.isOnlineRace then
-    isAdminUnlocked = true
-  elseif wasOnlineRace == false then
-    isAdminUnlocked = sim.isAdmin == true
-  end
-  wasOnlineRace = sim.isOnlineRace
-
-  -- Admin: poll ac.checkAdminPrivileges() result after a login attempt
-  if adminCheckPending then
-    adminCheckTimer = adminCheckTimer + dt
-    if sim.isAdmin then
-      isAdminUnlocked = true
-      adminCheckPending = false
-      loginPassword = ''
-      loginError = ''
-    elseif adminCheckTimer >= ADMIN_CHECK_TIMEOUT then
-      adminCheckPending = false
-      loginError = 'Login failed. Check your admin password and try again.'
-      loginCooldown = 3
-    end
-  end
+  adminAuth.update(dt)
 
   local localCar = ac.getCar(0)
   local localName = ac.getDriverName(0) or ''
@@ -188,31 +161,6 @@ function script.update(dt)
   end
 end
 
--- Attempt to authenticate as server admin by sending /admin <password> via chat.
--- On success: sim.isAdmin will flip to true; we poll it in script.update.
-local function attemptAdminLogin(password)
-  if loginCooldown > 0 then return end
-  if adminCheckPending then return end
-  if password == nil or password == '' then
-    loginError = 'Please enter your admin password.'
-    return
-  end
-
-  loginError = ''
-  -- Send the /admin command silently. ac.sendChatMessage returns false if rate-limited.
-  local sent = ac.sendChatMessage('/admin ' .. password)
-  if not sent then
-    loginError = 'Chat is rate-limited. Please wait a moment and try again.'
-    loginCooldown = 2
-    return
-  end
-
-  -- Immediately request CSP to refresh the isAdmin flag.
-  ac.checkAdminPrivileges()
-  adminCheckPending = true
-  adminCheckTimer = 0
-end
-
 local adminUI = require('modules/ui').create({
   colors = {
     yellow = FCA_YELLOW,
@@ -220,25 +168,13 @@ local adminUI = require('modules/ui').create({
     muted = FCA_MUTED_TEXT,
     danger = DANGER_RED
   },
-  isAdminUnlocked = function () return isAdminUnlocked end,
-  getLoginState = function ()
-    return {
-      password = loginPassword,
-      error = loginError,
-      cooldown = loginCooldown,
-      pending = adminCheckPending
-    }
-  end,
-  setLoginPassword = function (password) loginPassword = password end,
-  attemptAdminLogin = attemptAdminLogin,
-  lockAdmin = function ()
-    if ac.getSim().isOnlineRace then
-      isAdminUnlocked = false
-      adminCheckPending = false
-      loginError = ''
-      loginPassword = ''
-    end
-  end
+  isAdminUnlocked = isAdminUnlocked,
+  getAdminState = adminAuth.getState,
+  setPassword = adminAuth.setPassword,
+  startSetup = adminAuth.startSetup,
+  startLogin = adminAuth.startLogin,
+  beginPasswordReset = adminAuth.beginPasswordReset,
+  lockAdmin = adminAuth.lock
 })
 
 function script.windowAdmin(dt)
@@ -249,8 +185,8 @@ function script.windowAdmin(dt)
   adminUI.drawAdminHeader()
   ui.separator()
 
-  if not isAdminUnlocked then
-    adminUI.drawAdminLoginPage()
+  if not isAdminUnlocked() then
+    adminUI.drawAdminAccessPage()
     return
   end
 

@@ -44,6 +44,10 @@ Every player who should receive synced flags and ignore commands needs a compati
 - When a driver is ignored, CMRT continues to silence blue-flag visual, audio, and track-map alerts. The FCA key is ready for the custom HUD to implement its own alerts.
 
 ## Important Notes
-- Online race-control actions require authenticating with the dedicated server admin password on the app's login screen. Offline sessions remain unlocked.
-- Authentication gates actions in the local app. CSP `OnlineEvent` messages are exchanged between clients, and receivers currently accept messages from any app client, so this client-side check cannot prevent another client from publishing forged changes.
+- Local race-control access requires both an allowlisted Content Manager Steam profile and a Flag Control password. The same gate applies online and offline.
+- The app reads the local Steam profile ID from Content Manager's `Values.data`. It does not display or log that ID.
+- The CSP Script Config folder path is shown on Flag Control's blocked-access screen. Copy `admin_steam_ids.example.ini` there as `admin_steam_ids.ini`, then add your 17-digit Steam profile ID on its own line. Blank lines and lines beginning with `#` are allowed; duplicate IDs and inline comments are rejected. Keep the populated file local and do not commit it.
+- On the first run with an allowlisted profile, set a 12–128-byte password in the app. The password itself is not saved; only a salted PBKDF2-HMAC-SHA256 verifier is stored in local CSP storage. Later sessions require logging in again.
+- To recover a forgotten password, use **RESET LOCAL PASSWORD** on the login screen and press the confirmation button again within five seconds. The current profile must still be allowlisted. If the identity or allowlist is unavailable, fix that configuration first; there is no bypass.
+- This is a local UI gate, not multiplayer authentication. CSP `OnlineEvent` messages are exchanged between clients, and receivers currently accept messages from any app client, so this client-side check cannot prevent another client from publishing forged changes.
 - Flag commands and ignores are broadcast to other clients running the app via CSP `OnlineEvent`.

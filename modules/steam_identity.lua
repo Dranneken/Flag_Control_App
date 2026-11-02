@@ -37,7 +37,7 @@ function steamIdentity.readCurrent()
 
   local file = io.open(path, 'rb')
   if not file then return nil, 'identity_unavailable' end
-  local contents = file:read('*a')
+  local contents = file:read(MAX_VALUES_BYTES + 1)
   local closed = file:close()
   if type(contents) ~= 'string' or not closed then
     return nil, 'identity_unavailable'

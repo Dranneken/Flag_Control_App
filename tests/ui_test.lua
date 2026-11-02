@@ -4,9 +4,6 @@ local submittedPassword
 local updatedPassword
 local locked = false
 local adminUnlocked = false
-ac = {
-  getSim = function () return { isOnlineRace = true } end
-}
 rgbm = function (r, g, b, a) return { r = r, g = g, b = b, a = a } end
 vec2 = function (x, y) return { x = x, y = y } end
 bit = { bor = function (a, b) return a + b end }
@@ -29,7 +26,7 @@ ui = {
   modernButton = function () return false end,
   sameLine = function () end,
   windowWidth = function () return 800 end,
-  button = function () return true end,
+  button = function (label) return label == 'ADMIN MODE' end,
   itemHovered = function () return false end,
   setTooltip = function () end
 }
@@ -37,15 +34,26 @@ ui = {
 local adminUI = require('modules/ui').create({
   colors = { yellow = {}, settingsText = {}, muted = {}, danger = {} },
   isAdminUnlocked = function () return adminUnlocked end,
-  getLoginState = function ()
-    return { password = '', error = '', cooldown = 0, pending = false }
+  getAdminState = function ()
+    return {
+      mode = 'login',
+      password = '',
+      error = '',
+      blockedMessage = '',
+      cooldown = 0,
+      pending = false,
+      progress = 0,
+      resetArmed = false
+    }
   end,
-  setLoginPassword = function (password) updatedPassword = password end,
-  attemptAdminLogin = function (password) submittedPassword = password end,
+  setPassword = function (password) updatedPassword = password end,
+  startSetup = function () end,
+  startLogin = function () submittedPassword = updatedPassword end,
+  beginPasswordReset = function () end,
   lockAdmin = function () locked = true end
 })
 
-adminUI.drawAdminLoginPage()
+adminUI.drawAdminAccessPage()
 assert(updatedPassword == 'typed-password')
 assert(submittedPassword == 'typed-password')
 

@@ -40,8 +40,8 @@ io.open = function (path, mode)
   openedPath = path
   assert(mode == 'rb')
   return {
-    read = function (_, format)
-      assert(format == '*a')
+    read = function (_, maxBytes)
+      assert(maxBytes == 1048577)
       return 'steam_profile = ' .. validUID
     end,
     close = function () return true end
