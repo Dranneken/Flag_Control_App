@@ -141,22 +141,12 @@ local function applyBlueIgnore(driverName, sessionID, carIndex, ignored)
   end
 end
 
-local sendBlueIgnore = ac.OnlineEvent({
-  ac.StructItem.key('app.FlagControlApp.blueIgnore.v3'),
-  protocol = ac.StructItem.int32(),
-  sessionID = ac.StructItem.int32(),
-  carIndex = ac.StructItem.int32(),
-  ignored = ac.StructItem.boolean(),
-  driverName = ac.StructItem.string(48)
-}, function (sender, message)
-  if sender == nil or sender.index == 0 or message.protocol ~= 3 then return end
-  applyBlueIgnore(message.driverName, message.sessionID, message.carIndex, message.ignored)
-end)
+local network
 
 local function publishBlueIgnore(driverName, sessionID, carIndex, ignored)
   if not isAdminUnlocked then return end
   applyBlueIgnore(driverName, sessionID, carIndex, ignored)
-  sendBlueIgnore({
+  network.sendBlueIgnore({
     protocol = 3,
     sessionID = sessionID or -1,
     carIndex = carIndex or -1,
@@ -176,7 +166,7 @@ local function clearAllIgnores()
   end
 
   setOverrideState('blueIgnored', false)
-  sendBlueIgnore({
+  network.sendBlueIgnore({
     protocol = 3,
     sessionID = -1,
     carIndex = -1,
@@ -217,36 +207,12 @@ local function applyBlueClassRule(className, groupName, autoAllowed)
   ac.storage('FlagControl.BlueAuto.' .. key, autoAllowed):set(autoAllowed)
 end
 
-local sendBlueClassRule = ac.OnlineEvent({
-  ac.StructItem.key('app.FlagControlApp.blueClassRule.v1'),
-  protocol = ac.StructItem.int32(),
-  className = ac.StructItem.string(48),
-  groupName = ac.StructItem.string(48),
-  autoAllowed = ac.StructItem.boolean()
-}, function (sender, message)
-  if sender == nil or sender.index == 0 or message.protocol ~= 1 then return end
-  if message.className == '' then return end
-  applyBlueClassRule(message.className, message.groupName, message.autoAllowed)
-end)
-
-local sendBlueAlert = ac.OnlineEvent({
-  ac.StructItem.key('app.FlagControlApp.manualBlueAlert.v1'),
-  protocol = ac.StructItem.int32(),
-  active = ac.StructItem.boolean(),
-  groupName = ac.StructItem.string(48)
-}, function (sender, message)
-  if sender == nil or sender.index == 0 or message.protocol ~= 1 then return end
-  blueAlertActive = message.active
-  blueAlertGroup = message.groupName
-  setOverrideState('manualBlueActive', message.active)
-end)
-
 local function publishBlueAlert(active, groupName)
   if not isAdminUnlocked then return end
   blueAlertActive = active == true
   blueAlertGroup = groupName or ''
   setOverrideState('manualBlueActive', blueAlertActive)
-  sendBlueAlert({ protocol = 1, active = blueAlertActive, groupName = blueAlertGroup }, true)
+  network.sendBlueAlert({ protocol = 1, active = blueAlertActive, groupName = blueAlertGroup }, true)
 end
 
 local flagOptions = {
@@ -254,48 +220,6 @@ local flagOptions = {
   { value = FLAG_YELLOW, label = 'YELLOW FLAG' },
   { value = FLAG_RED, label = 'RED FLAG' }
 }
-
-local sendPresence = ac.OnlineEvent({
-  ac.StructItem.key('app.FlagControlApp.lobbyPresence.v4'),
-  protocol = ac.StructItem.int32(),
-  className = ac.StructItem.string(48),
-  isBlueFlag = ac.StructItem.boolean(),
-  blueCauseCarIndex = ac.StructItem.int32()
-}, function (sender, message)
-  if sender == nil or sender.index == 0 or message.protocol ~= 4 then return end
-
-  local sessionID = sender.sessionID
-  if sessionID == nil then return end
-
-  local name = ac.getDriverName(sender.index)
-  if name == nil or name == '' then
-    name = 'Driver ' .. tostring(sessionID)
-  end
-
-  onlinePeers[sessionID] = {
-    carIndex = sender.index,
-    name = name,
-    className = message.className,
-    isBlueFlag = message.isBlueFlag == true,
-    blueCauseCarIndex = message.blueCauseCarIndex or -1,
-    lastSeen = os.clock()
-  }
-end)
-
-local sendFlagState = ac.OnlineEvent({
-  ac.StructItem.key('app.FlagControlApp.fieldFlag.v6'),
-  protocol = ac.StructItem.int32(),
-  overrideActive = ac.StructItem.boolean(),
-  flag = ac.StructItem.int32()
-}, function (sender, message)
-  if sender == nil or sender.index == 0 or message.protocol ~= 6 then return end
-  if not isControllableFieldFlag(message.flag) then return end
-
-  fieldFlag = message.flag
-  setOverrideState('active', message.overrideActive)
-  setOverrideState('flag', message.flag)
-  flagSenderName = ac.getDriverName(sender.index) or 'Lobby member'
-end)
 
 local function publishFlag(flag)
   if not isAdminUnlocked then return end
@@ -305,8 +229,26 @@ local function publishFlag(flag)
   setOverrideState('active', overrideActive)
   setOverrideState('flag', flag)
   flagSenderName = 'You'
-  sendFlagState({ protocol = 6, overrideActive = overrideActive, flag = flag }, true)
+  network.sendFlagState({ protocol = 6, overrideActive = overrideActive, flag = flag }, true)
 end
+
+network = require('modules/network').create({
+  onlinePeers = onlinePeers,
+  applyBlueIgnore = applyBlueIgnore,
+  applyBlueClassRule = applyBlueClassRule,
+  applyBlueAlert = function (active, groupName)
+    blueAlertActive = active
+    blueAlertGroup = groupName
+    setOverrideState('manualBlueActive', active)
+  end,
+  isControllableFieldFlag = isControllableFieldFlag,
+  applyFieldFlag = function (flag, overrideActive, senderName)
+    fieldFlag = flag
+    setOverrideState('active', overrideActive)
+    setOverrideState('flag', flag)
+    flagSenderName = senderName or 'Lobby member'
+  end
+})
 
 function script.update(dt)
   local sim = ac.getSim()
@@ -366,7 +308,7 @@ function script.update(dt)
   presenceTimer = presenceTimer + dt
   if presenceTimer >= 2 then
     presenceTimer = 0
-    sendPresence({
+    network.sendPresence({
       protocol = 4,
       className = getLocalClassName(),
       isBlueFlag = isLocalUnderBlue,
