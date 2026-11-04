@@ -4,6 +4,9 @@ local submittedPassword
 local updatedPassword
 local locked = false
 local adminUnlocked = false
+local selectedButton = 'ADMIN MODE'
+local passwordChangeRequested = false
+local passwordChangeStarted = false
 rgbm = function (r, g, b, a) return { r = r, g = g, b = b, a = a } end
 vec2 = function (x, y) return { x = x, y = y } end
 bit = { bor = function (a, b) return a + b end }
@@ -26,7 +29,7 @@ ui = {
   modernButton = function () return false end,
   sameLine = function () end,
   windowWidth = function () return 800 end,
-  button = function (label) return label == 'ADMIN MODE' end,
+  button = function (label) return label == selectedButton end,
   itemHovered = function () return false end,
   setTooltip = function () end
 }
@@ -43,12 +46,22 @@ local adminUI = require('modules/ui').create({
       cooldown = 0,
       pending = false,
       progress = 0,
-      resetArmed = false
+      resetArmed = false,
+      notice = '',
+      defaultPasswordActive = false,
+      newPassword = '',
+      passwordConfirmation = '',
+      passwordChangeOpen = false
     }
   end,
   setPassword = function (password) updatedPassword = password end,
+  setNewPassword = function () end,
+  setPasswordConfirmation = function () end,
   startSetup = function () end,
   startLogin = function () submittedPassword = updatedPassword end,
+  beginPasswordChange = function () passwordChangeRequested = true end,
+  startPasswordChange = function () passwordChangeStarted = true end,
+  cancelPasswordChange = function () end,
   beginPasswordReset = function () end,
   lockAdmin = function () locked = true end
 })
@@ -60,5 +73,14 @@ assert(submittedPassword == 'typed-password')
 adminUnlocked = true
 adminUI.drawAdminHeader()
 assert(locked)
+
+locked = false
+selectedButton = 'CHANGE PASSWORD'
+adminUI.drawAdminHeader()
+assert(passwordChangeRequested)
+
+selectedButton = 'SAVE NEW PASSWORD'
+adminUI.drawPasswordChangePage()
+assert(passwordChangeStarted)
 
 print('UI module tests passed')

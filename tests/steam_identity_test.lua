@@ -26,6 +26,11 @@ local otherProfile, otherProfileError = steamIdentity.parse(
 )
 assert(otherProfile == nil and otherProfileError == 'identity_unavailable')
 
+local withOtherLongNumber, withOtherLongNumberError = steamIdentity.parse(
+  'another_numeric_setting = 12345678901234567\nsteam_profile = ' .. validUID
+)
+assert(withOtherLongNumber == validUID and withOtherLongNumberError == nil)
+
 ac = {
   FolderID = { AppDataLocal = 5 },
   getFolder = function (folderID)

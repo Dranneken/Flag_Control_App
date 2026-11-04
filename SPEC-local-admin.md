@@ -22,6 +22,7 @@ The local gate replaces the current Assetto Corsa server-admin login as the gate
 - Existing entry point: `FlagControlApp.lua`; current multiplayer transport remains CSP `ac.OnlineEvent`.
 - Content Manager currently stores a Steam profile ID in its local `Values.data` file under `%LOCALAPPDATA%\AcTools Content Manager`.
 - Password verifier: salted PBKDF2-HMAC-SHA256; never store the plaintext password.
+- Fresh installs accept the shared initial password `adminpass` only after the current Steam UID is allowlisted. The user can change it after login; this shared default must be disclosed as temporary. Do not run password derivation during app initialization.
 - Password hashing guidance: OWASP recommends Argon2id by default and PBKDF2-HMAC-SHA256 with 600,000 or more iterations when PBKDF2 is required for FIPS compliance. See [OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html).
 
 ## Commands
@@ -45,7 +46,7 @@ Fengari provides an isolated Lua test/runtime check; acceptance still requires a
 - `modules/password_kdf.lua`: salted PBKDF2-HMAC-SHA256 implementation and verifier helpers.
 - `modules/admin_auth.lua`: first-run password setup, login state, and lockout/cooldown behavior.
 - `modules/ui.lua`: app tabs and control rendering.
-- `admin_steam_ids.example.ini`: tracked example with no personal IDs; the user's editable `admin_steam_ids.ini` remains local and untracked.
+- `admin_steam_ids.example.ini`: tracked example with no personal IDs. If no legacy per-script allowlist exists, the app creates a local `FlagControlApp_admin_steam_ids.ini` in the shared CSP Lua app config folder.
 
 Keep the existing public event keys, payload layouts, and field/blue-flag behavior unchanged.
 
@@ -80,7 +81,7 @@ end
 
 ## Success Criteria
 
-1. A local Steam UID must match an entry in `admin_steam_ids.ini` before first-run password setup or subsequent password login is permitted.
+1. A local Steam UID must match an entry in `admin_steam_ids.ini` before default-password provisioning, password login, password reset, or local admin actions are permitted.
 2. The password verifier is stored locally as a salted PBKDF2-HMAC-SHA256 verifier; the password itself is never persisted.
 3. Missing, unreadable, malformed, ambiguous, or unlisted identity data leaves controls locked with a clear, non-sensitive message.
 4. Every local action that changes flags, ignores, class rules, or manual alerts is gated in both online and offline sessions.

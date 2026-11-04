@@ -4,6 +4,17 @@ function appUI.create(dependencies)
   local function drawAdminHeader()
     if not dependencies.isAdminUnlocked() then return end
 
+    local state = dependencies.getAdminState()
+    if state.notice ~= '' then
+      ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
+      ui.textWrapped(state.notice)
+      ui.popStyleColor()
+    end
+
+    ui.sameLine(ui.windowWidth() - 250)
+    if ui.button('CHANGE PASSWORD', vec2(130, 18)) then
+      dependencies.beginPasswordChange()
+    end
     ui.sameLine(ui.windowWidth() - 110)
     ui.pushStyleColor(ui.StyleColor.Button, rgbm(0.1, 0.45, 0.15, 1))
     ui.pushStyleColor(ui.StyleColor.ButtonHovered, rgbm(0.14, 0.55, 0.2, 1))
@@ -38,7 +49,7 @@ function appUI.create(dependencies)
       ui.popStyleColor()
       ui.newLine(2)
       ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
-      ui.textWrapped('Configure admin_steam_ids.ini with one Steam profile ID per line, then reload Flag Control.')
+      ui.textWrapped('Add your 17-digit Steam profile ID to the allowlist file shown below, then reload Flag Control. Flag Control creates the file automatically if it is missing.')
       if state.allowlistPath then
         ui.textWrapped('Allowlist path: ' .. state.allowlistPath)
       end
@@ -48,9 +59,12 @@ function appUI.create(dependencies)
 
     ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
     if state.mode == 'setup' then
-      ui.textWrapped('Set a local password for this allowlisted profile. Use 12–128 bytes.')
+      ui.textWrapped('Set a local password for this allowlisted profile. Use 9–128 bytes.')
     else
       ui.textWrapped('The local profile is allowlisted. Enter the Flag Control password to unlock race-control actions.')
+    end
+    if state.defaultPasswordActive then
+      ui.textWrapped('Default password: adminpass. Change it after signing in.')
     end
     ui.popStyleColor()
     ui.newLine(2)
@@ -123,6 +137,11 @@ function appUI.create(dependencies)
       ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
       ui.text(string.format('Checking password… %d%%', math.floor(state.progress * 100)))
       ui.popStyleColor()
+    elseif not state.defaultPasswordActive and state.notice ~= '' then
+      ui.newLine()
+      ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
+      ui.textWrapped(state.notice)
+      ui.popStyleColor()
     end
 
     if state.mode == 'login' then
@@ -137,9 +156,67 @@ function appUI.create(dependencies)
     end
   end
 
+  local function drawPasswordChangePage()
+    local state = dependencies.getAdminState()
+    ui.newLine(3)
+    ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.yellow)
+    ui.setNextTextBold()
+    ui.text('CHANGE LOCAL ADMIN PASSWORD')
+    ui.popStyleColor()
+    ui.separator()
+    ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
+    ui.textWrapped('Choose a new password between 9 and 128 bytes, then enter it again to confirm.')
+    ui.popStyleColor()
+    ui.newLine(2)
+
+    ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.settingsText)
+    ui.text('NEW PASSWORD')
+    ui.popStyleColor()
+    ui.setNextItemWidth(ui.availableSpaceX())
+    local newPassword = ui.inputText(
+      '##newadminpw',
+      state.newPassword,
+      bit.bor(ui.InputTextFlags.Password, ui.InputTextFlags.FocusByDefault)
+    )
+    dependencies.setNewPassword(newPassword)
+
+    ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.settingsText)
+    ui.text('CONFIRM NEW PASSWORD')
+    ui.popStyleColor()
+    ui.setNextItemWidth(ui.availableSpaceX())
+    local confirmation = ui.inputText(
+      '##confirmadminpw',
+      state.passwordConfirmation,
+      ui.InputTextFlags.Password
+    )
+    dependencies.setPasswordConfirmation(confirmation)
+
+    if state.error ~= '' then
+      ui.newLine()
+      ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.danger)
+      ui.textWrapped(state.error)
+      ui.popStyleColor()
+    elseif state.pending then
+      ui.newLine()
+      ui.pushStyleColor(ui.StyleColor.Text, dependencies.colors.muted)
+      ui.text(string.format('Updating password… %d%%', math.floor(state.progress * 100)))
+      ui.popStyleColor()
+    end
+
+    ui.newLine(2)
+    if state.pending then return end
+    if ui.button('SAVE NEW PASSWORD', vec2(ui.availableSpaceX(), 32)) then
+      dependencies.startPasswordChange()
+    end
+    if ui.button('CANCEL', vec2(ui.availableSpaceX(), 24)) then
+      dependencies.cancelPasswordChange()
+    end
+  end
+
   return {
     drawAdminHeader = drawAdminHeader,
-    drawAdminAccessPage = drawAdminAccessPage
+    drawAdminAccessPage = drawAdminAccessPage,
+    drawPasswordChangePage = drawPasswordChangePage
   }
 end
 

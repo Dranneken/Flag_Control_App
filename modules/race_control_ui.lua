@@ -6,6 +6,7 @@ function raceControlUI.create(dependencies)
   local colors = dependencies.colors
   local flags = dependencies.flags
   local selectedFlag = flags.yellow
+  local selectedFlagExplicit = false
   local selectedBlueGroup = ''
   local flagOptions = {
     { value = flags.green, label = 'GREEN FLAG' },
@@ -55,22 +56,22 @@ function raceControlUI.create(dependencies)
   end
 
   local function drawFieldFlagsTab()
-    ui.columns(2)
-    ui.setColumnWidth(0, 220)
+    local currentFlag = fieldFlags.getFlag()
+    if not selectedFlagExplicit and currentFlag ~= flags.none then
+      selectedFlag = currentFlag
+    end
 
     ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
     ui.text('CURRENT FIELD FLAG')
     ui.popStyleColor()
-    ui.textColored(getFieldFlagLabel(fieldFlags.getFlag()), getFieldFlagColor(fieldFlags.getFlag()))
+    ui.textColored(getFieldFlagLabel(currentFlag), getFieldFlagColor(currentFlag))
     ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
     ui.text('Last update: ' .. fieldFlags.getSenderName())
     ui.text('Lobby: ' .. dependencies.getLobbyMessageStatus())
     ui.popStyleColor()
     drawLobbyPeers()
 
-    ui.nextColumn()
-
-    ui.newLine(-5)
+    ui.separator()
     ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
     ui.text('SELECT FLAG')
     ui.popStyleColor()
@@ -84,6 +85,7 @@ function raceControlUI.create(dependencies)
       ui.pushStyleColor(ui.StyleColor.Text, getFlagButtonTextColor(option.value))
       if ui.button(option.label, vec2(buttonWidth, 30)) then
         selectedFlag = option.value
+        selectedFlagExplicit = true
       end
       ui.popStyleColor(2)
     end
@@ -93,14 +95,18 @@ function raceControlUI.create(dependencies)
     ui.text('SELECTED: ' .. getFieldFlagLabel(selectedFlag))
     ui.popStyleColor()
 
-    local flagDeployed = fieldFlags.getFlag() ~= flags.none
-    ui.pushStyleColor(ui.StyleColor.Button, flagDeployed and rgbm(0.78, 0.12, 0.1, 1) or colors.yellow)
-    ui.pushStyleColor(ui.StyleColor.Text, flagDeployed and rgbm(1, 1, 1, 1) or rgbm(0.08, 0.08, 0.08, 1))
-    if ui.button(flagDeployed and 'UNDEPLOY FLAG' or 'DEPLOY FLAG', vec2(-0.1, 38)) then
-      fieldFlags.publish(flagDeployed and flags.none or selectedFlag)
+    local flagDeployed = currentFlag ~= flags.none
+    local actionLabel = 'DEPLOY FLAG'
+    if flagDeployed then
+      actionLabel = selectedFlag == currentFlag and 'UNDEPLOY FLAG' or 'REDEPLOY FLAG'
+    end
+    local isUndeploy = actionLabel == 'UNDEPLOY FLAG'
+    ui.pushStyleColor(ui.StyleColor.Button, isUndeploy and rgbm(0.78, 0.12, 0.1, 1) or colors.yellow)
+    ui.pushStyleColor(ui.StyleColor.Text, isUndeploy and rgbm(1, 1, 1, 1) or rgbm(0.08, 0.08, 0.08, 1))
+    if ui.button(actionLabel, vec2(-0.1, 38)) then
+      fieldFlags.publish(isUndeploy and flags.none or selectedFlag)
     end
     ui.popStyleColor(2)
-    ui.columns(1)
 
     ui.separator()
     ui.pushStyleColor(ui.StyleColor.Text, colors.yellow)
@@ -183,190 +189,136 @@ function raceControlUI.create(dependencies)
       ui.popStyleColor()
       ui.newLine(3)
     else
-      ui.columns(6, 'BlueFlagDriversTable', true)
-      ui.setColumnWidth(0, 85)
-      ui.setColumnWidth(1, 46)
-      ui.setColumnWidth(2, 145)
-      ui.setColumnWidth(3, 140)
-      ui.setColumnWidth(4, 185)
-
-      ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
-      ui.text('STATUS')
-      ui.nextColumn()
-      ui.text('POS')
-      ui.nextColumn()
-      ui.text('DRIVER')
-      ui.nextColumn()
-      ui.text('CAR / CLASS')
-      ui.nextColumn()
-      ui.text('APPROACHING / REASON')
-      ui.nextColumn()
-      ui.text('ACTION')
-      ui.popStyleColor()
-      ui.nextColumn()
-
       for _, driver in ipairs(activeBlueDrivers) do
+        ui.separator()
+        local position = driver.racePosition > 0 and
+          ('P' .. tostring(driver.racePosition)) or '-'
+        local driverName = driver.isLocal and (driver.name .. ' (You)') or driver.name
         if driver.isIgnored then
-          ui.textColored('[IGNORED]', colors.ignored)
+          ui.textColored('[IGNORED] ' .. position .. ' - ' .. driverName, colors.ignored)
         else
-          ui.textColored('[BLUE]', colors.blue)
+          ui.textColored('[BLUE] ' .. position .. ' - ' .. driverName, colors.blue)
         end
-        ui.nextColumn()
-
-        ui.text(driver.racePosition > 0 and ('P' .. tostring(driver.racePosition)) or '-')
-        ui.nextColumn()
-
-        if driver.isLocal then
-          ui.textColored(driver.name .. ' (You)', colors.yellow)
-        else
-          ui.text(driver.name)
-        end
-        ui.nextColumn()
 
         local carLabel = driver.className ~= '' and
-                         (driver.carName .. ' (' .. driver.className .. ')') or driver.carName
-        ui.text(carLabel)
-        ui.nextColumn()
-
+          (driver.carName .. ' (' .. driver.className .. ')') or driver.carName
+        ui.textWrapped(carLabel)
         ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
-        ui.text(driver.causeDescription)
+        ui.textWrapped('Reason: ' .. driver.causeDescription)
         ui.popStyleColor()
-        ui.nextColumn()
 
         if driver.isIgnored then
           ui.pushStyleColor(ui.StyleColor.Button, colors.success)
           ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-          if ui.button('RESTORE##' .. driver.key, vec2(ui.availableSpaceX(), 22)) then
+          if ui.button('RESTORE##' .. driver.key, vec2(-0.1, 22)) then
             blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, false)
           end
           ui.popStyleColor(2)
         else
           ui.pushStyleColor(ui.StyleColor.Button, colors.danger)
           ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-          if ui.button('IGNORE##' .. driver.key, vec2(ui.availableSpaceX(), 22)) then
+          if ui.button('IGNORE##' .. driver.key, vec2(-0.1, 22)) then
             blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, true)
           end
           ui.popStyleColor(2)
         end
-        ui.nextColumn()
       end
-      ui.columns(1)
     end
 
     ui.separator()
 
-    if ui.treeNode('All Session Drivers (' .. tostring(#allDrivers) .. ')###all_drivers_node') then
-      ui.columns(5, 'AllDriversTable', true)
-      ui.setColumnWidth(0, 46)
-      ui.setColumnWidth(1, 175)
-      ui.setColumnWidth(2, 175)
-      ui.setColumnWidth(3, 110)
+    ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
+    ui.text('ALL SESSION DRIVERS (' .. tostring(#allDrivers) .. ')')
+    ui.popStyleColor()
+    if #allDrivers == 0 then
+      ui.text('No session drivers available.')
+    end
+    for _, driver in ipairs(allDrivers) do
+      ui.separator()
+      local position = driver.racePosition > 0 and
+        ('P' .. tostring(driver.racePosition)) or '-'
+      local driverName = driver.isLocal and (driver.name .. ' (You)') or driver.name
+      ui.textColored(position .. ' - ' .. driverName, driver.isLocal and colors.yellow or colors.settingsText)
 
-      ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
-      ui.text('POS')
-      ui.nextColumn()
-      ui.text('DRIVER')
-      ui.nextColumn()
-      ui.text('CAR / CLASS')
-      ui.nextColumn()
-      ui.text('BLUE STATE')
-      ui.nextColumn()
-      ui.text('ACTION')
-      ui.popStyleColor()
-      ui.nextColumn()
+      local carLabel = driver.className ~= '' and
+        (driver.carName .. ' (' .. driver.className .. ')') or driver.carName
+      ui.textWrapped(carLabel)
 
-      for _, driver in ipairs(allDrivers) do
-        ui.text(driver.racePosition > 0 and ('P' .. tostring(driver.racePosition)) or '-')
-        ui.nextColumn()
-
-        if driver.isLocal then
-          ui.textColored(driver.name .. ' (You)', colors.yellow)
-        else
-          ui.text(driver.name)
-        end
-        ui.nextColumn()
-
-        local carLabel = driver.className ~= '' and
-                         (driver.carName .. ' (' .. driver.className .. ')') or driver.carName
-        ui.text(carLabel)
-        ui.nextColumn()
-
-        if driver.isIgnored then
-          ui.textColored('Ignored', colors.ignored)
-        elseif driver.isUnderBlue then
-          ui.textColored('Active Blue', colors.blue)
-        else
-          ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
-          ui.text('Normal')
-          ui.popStyleColor()
-        end
-        ui.nextColumn()
-
-        if driver.isIgnored then
-          ui.pushStyleColor(ui.StyleColor.Button, colors.success)
-          ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-          if ui.button('RESTORE##all_' .. driver.key, vec2(ui.availableSpaceX(), 20)) then
-            blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, false)
-          end
-          ui.popStyleColor(2)
-        else
-          ui.pushStyleColor(ui.StyleColor.Button,
-            driver.isUnderBlue and colors.danger or rgbm(0.3, 0.3, 0.3, 1))
-          ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
-          if ui.button('IGNORE##all_' .. driver.key, vec2(ui.availableSpaceX(), 20)) then
-            blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, true)
-          end
-          ui.popStyleColor(2)
-        end
-        ui.nextColumn()
+      if driver.isIgnored then
+        ui.textColored('Ignored', colors.ignored)
+      elseif driver.isUnderBlue then
+        ui.textColored('Active Blue', colors.blue)
+      else
+        ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
+        ui.text('Normal')
+        ui.popStyleColor()
       end
-      ui.columns(1)
-      ui.treePop()
+      ui.sameLine()
+
+      if driver.isIgnored then
+        ui.pushStyleColor(ui.StyleColor.Button, colors.success)
+        ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
+        if ui.button('RESTORE##all_' .. driver.key, vec2(-0.1, 20)) then
+          blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, false)
+        end
+        ui.popStyleColor(2)
+      else
+        ui.pushStyleColor(ui.StyleColor.Button,
+          driver.isUnderBlue and colors.danger or rgbm(0.3, 0.3, 0.3, 1))
+        ui.pushStyleColor(ui.StyleColor.Text, rgbm(1, 1, 1, 1))
+        if ui.button('IGNORE##all_' .. driver.key, vec2(-0.1, 20)) then
+          blueFlags.publishIgnore(driver.name, driver.sessionID, driver.carIndex, true)
+        end
+        ui.popStyleColor(2)
+      end
     end
 
-    if ui.treeNode('Manual Blue Alert & Class Options###manual_blue_node') then
-      ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
-      ui.textWrapped('Deploy a manual blue flag to all drivers in the selected group, or clear it.')
-      ui.popStyleColor()
+    ui.separator()
+    ui.pushStyleColor(ui.StyleColor.Text, colors.settingsText)
+    ui.text('MANUAL BLUE ALERT & CLASS OPTIONS')
+    ui.popStyleColor()
+    ui.pushStyleColor(ui.StyleColor.Text, colors.muted)
+    ui.textWrapped('Deploy a manual blue flag to all drivers in the selected group, or clear it.')
+    ui.popStyleColor()
 
-      local localClass = dependencies.getLocalClassName()
-      if localClass ~= '' then
-        ui.text('Your class tag: ' .. localClass)
-      end
+    local localClass = dependencies.getLocalClassName()
+    if localClass ~= '' then
+      ui.text('Your class tag: ' .. localClass)
+    end
 
-      local groups = {}
-      local seen = {}
-      for _, driver in ipairs(allDrivers) do
-        local classNameKey = blueFlags.classKey(driver.className)
-        if driver.className ~= '' and not seen[classNameKey] then
-          seen[classNameKey] = true
-          groups[#groups + 1] = driver.className
-        end
+    local groups = {}
+    local seen = {}
+    for _, driver in ipairs(allDrivers) do
+      local classNameKey = blueFlags.classKey(driver.className)
+      if driver.className ~= '' and not seen[classNameKey] then
+        seen[classNameKey] = true
+        groups[#groups + 1] = driver.className
       end
-      table.sort(groups)
+    end
+    table.sort(groups)
 
-      if #groups > 0 then
-        if selectedBlueGroup == '' or not seen[blueFlags.classKey(selectedBlueGroup)] then
-          selectedBlueGroup = groups[1]
-        end
-        ui.setNextItemWidth(250)
-        ui.combo('##manual_blue_group', selectedBlueGroup, function ()
-          for _, groupName in ipairs(groups) do
-            if ui.selectable(groupName) then selectedBlueGroup = groupName end
-          end
-        end)
-        ui.sameLine(0, 10)
-        if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or
-                     'DEPLOY BLUE TO GROUP', vec2(200, 24)) then
-          blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), selectedBlueGroup)
-        end
-      else
-        if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or
-                     'DEPLOY BLUE FIELD-WIDE', vec2(220, 24)) then
-          blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), '')
-        end
+    if #groups > 0 then
+      if selectedBlueGroup == '' or not seen[blueFlags.classKey(selectedBlueGroup)] then
+        selectedBlueGroup = groups[1]
       end
-      ui.treePop()
+      local comboWidth = math.min(250, ui.availableSpaceX() * 0.55)
+      local buttonWidth = math.max(120, ui.availableSpaceX() - comboWidth - 10)
+      ui.setNextItemWidth(comboWidth)
+      ui.combo('##manual_blue_group', selectedBlueGroup, function ()
+        for _, groupName in ipairs(groups) do
+          if ui.selectable(groupName) then selectedBlueGroup = groupName end
+        end
+      end)
+      ui.sameLine(0, 10)
+      if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or
+                   'DEPLOY BLUE TO GROUP', vec2(buttonWidth, 24)) then
+        blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), selectedBlueGroup)
+      end
+    else
+      if ui.button(blueFlags.isBlueAlertActive() and 'CLEAR MANUAL BLUE' or
+                   'DEPLOY BLUE FIELD-WIDE', vec2(math.min(220, ui.availableSpaceX()), 24)) then
+        blueFlags.publishAlert(not blueFlags.isBlueAlertActive(), '')
+      end
     end
   end
 

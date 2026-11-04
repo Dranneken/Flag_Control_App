@@ -3,7 +3,7 @@ local passwordKdf = {}
 local ITERATIONS = 600000
 local SALT_LENGTH = 16
 local KEY_LENGTH = 32
-local MIN_PASSWORD_BYTES = 12
+local MIN_PASSWORD_BYTES = 9
 local MAX_PASSWORD_BYTES = 128
 
 local function isPasswordLengthValid(password)
@@ -79,8 +79,13 @@ function passwordKdf.startCreate(password, crypto, pbkdf2)
     return nil, 'invalid_password_length'
   end
 
-  crypto = crypto or require('modules/windows_crypto')
-  local salt, saltError = crypto.randomBytes(SALT_LENGTH)
+  if not crypto then
+    local loaded, cryptoModule = pcall(require, 'modules/windows_crypto')
+    if not loaded then return nil, 'crypto_unavailable' end
+    crypto = cryptoModule
+  end
+  local randomSucceeded, salt, saltError = pcall(crypto.randomBytes, SALT_LENGTH)
+  if not randomSucceeded then return nil, 'crypto_unavailable' end
   if not salt or #salt ~= SALT_LENGTH then
     return nil, saltError or 'crypto_unavailable'
   end

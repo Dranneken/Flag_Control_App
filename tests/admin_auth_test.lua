@@ -2,6 +2,7 @@ package.path = './?.lua;./?/init.lua;' .. package.path
 
 local allowedID = '76561190000000000'
 local password = 'correct horse battery staple'
+local defaultPassword = 'adminpass'
 
 local function makeJob(result)
   local complete = false
@@ -33,11 +34,11 @@ local function createAuth(options)
     },
     passwordKdf = {
       startCreate = function (submittedPassword)
-        assert(submittedPassword == password)
-        return makeJob('credential-record')
+        return makeJob('credential-for:' .. submittedPassword)
       end,
-      startVerify = function (submittedPassword)
-        return makeJob(submittedPassword == password)
+      startVerify = function (submittedPassword, savedCredential)
+        local expectedPassword = savedCredential:match('^credential%-for:(.*)$') or password
+        return makeJob(submittedPassword == expectedPassword)
       end
     },
     now = function () return clock end
@@ -48,18 +49,16 @@ local function createAuth(options)
     function (value) clock = value end
 end
 
-local setupAuth, getSetupCredential = createAuth({})
-assert(setupAuth.getState().mode == 'setup')
-assert(not setupAuth.isUnlocked())
-setupAuth.setPassword(password)
-assert(setupAuth.startSetup())
-assert(setupAuth.getState().pending)
-assert(not setupAuth.isUnlocked())
-setupAuth.update(0.016)
-assert(setupAuth.isUnlocked())
-assert(getSetupCredential() == 'credential-record')
+local defaultAuth, getDefaultCredential = createAuth({})
+assert(defaultAuth.getState().mode == 'login')
+assert(not defaultAuth.isUnlocked())
+assert(defaultAuth.getState().defaultPasswordActive)
+assert(getDefaultCredential() == '')
+defaultAuth.setPassword(defaultPassword)
+assert(defaultAuth.startLogin())
+assert(defaultAuth.isUnlocked())
 
-local loginAuth = createAuth({ credential = 'stored-credential' })
+local loginAuth, getLoginCredential = createAuth({ credential = 'stored-credential' })
 assert(loginAuth.getState().mode == 'login')
 loginAuth.setPassword('wrong password')
 assert(loginAuth.startLogin())
@@ -73,8 +72,26 @@ loginAuth.setPassword(password)
 assert(loginAuth.startLogin())
 loginAuth.update(0.016)
 assert(loginAuth.isUnlocked())
+loginAuth.beginPasswordChange()
+loginAuth.setNewPassword(password)
+loginAuth.setPasswordConfirmation(password)
+assert(loginAuth.startPasswordChange())
+assert(not loginAuth.isUnlocked())
+loginAuth.update(0.016)
+assert(loginAuth.isUnlocked())
+assert(getLoginCredential() == 'credential-for:' .. password)
 loginAuth.lock()
 assert(not loginAuth.isUnlocked())
+
+loginAuth.setPassword(defaultPassword)
+assert(loginAuth.startLogin())
+loginAuth.update(0.016)
+assert(not loginAuth.isUnlocked())
+loginAuth.update(4)
+loginAuth.setPassword(password)
+assert(loginAuth.startLogin())
+loginAuth.update(0.016)
+assert(loginAuth.isUnlocked())
 
 local unlistedAuth = createAuth({ identity = '76561190000000001' })
 assert(unlistedAuth.getState().mode == 'blocked')
@@ -105,8 +122,12 @@ assert(resetAuth.getState().resetArmed)
 assert(getResetCredential() == 'stored-credential')
 advanceClock(1)
 assert(resetAuth.beginPasswordReset())
-assert(resetAuth.getState().mode == 'setup')
 assert(getResetCredential() == '')
+assert(resetAuth.getState().mode == 'login')
+assert(resetAuth.getState().defaultPasswordActive)
+resetAuth.setPassword(defaultPassword)
+assert(resetAuth.startLogin())
+assert(resetAuth.isUnlocked())
 
 local deniedResetAuth = createAuth({
   identity = '76561190000000001',

@@ -3,6 +3,7 @@ local adminAuth = {}
 local COOLDOWN_SECONDS = 3
 local KDF_STEP_BUDGET_SECONDS = 0.0015
 local RESET_CONFIRM_SECONDS = 5
+local DEFAULT_PASSWORD = 'adminpass'
 
 local BLOCKED_MESSAGES = {
   allowlist_unavailable = 'The local admin allowlist is missing or could not be read.',
@@ -23,7 +24,10 @@ function adminAuth.create(dependencies)
   local storage = dependencies.credentialStorage
   local now = dependencies.now or os.clock
   local password = ''
+  local newPassword = ''
+  local passwordConfirmation = ''
   local errorMessage = ''
+  local noticeMessage = ''
   local blockedMessage = ''
   local cooldown = 0
   local credential = ''
@@ -32,6 +36,8 @@ function adminAuth.create(dependencies)
   local job
   local jobAction
   local resetConfirmUntil = 0
+  local passwordChangeOpen = false
+  local defaultPasswordActive = false
 
   local function refreshAuthorization()
     unlocked = false
@@ -64,7 +70,8 @@ function adminAuth.create(dependencies)
     end
 
     blockedMessage = ''
-    mode = credential == '' and 'setup' or 'login'
+    defaultPasswordActive = credential == ''
+    mode = 'login'
     return true
   end
 
@@ -80,6 +87,21 @@ function adminAuth.create(dependencies)
     if action == 'setup' and mode ~= 'setup' then return false end
     if action == 'login' and mode ~= 'login' then return false end
 
+    if action == 'login' and defaultPasswordActive then
+      password = ''
+      if submittedPassword == DEFAULT_PASSWORD then
+        unlocked = true
+        mode = 'unlocked'
+        errorMessage = ''
+        noticeMessage = ''
+        return true
+      end
+      unlocked = false
+      errorMessage = 'Incorrect local admin password.'
+      cooldown = COOLDOWN_SECONDS
+      return false
+    end
+
     local newJob, jobError
     if action == 'setup' then
       newJob, jobError = passwordKdf.startCreate(submittedPassword)
@@ -89,7 +111,7 @@ function adminAuth.create(dependencies)
     password = ''
     if not newJob then
       if jobError == 'invalid_password_length' then
-        errorMessage = 'Password must be between 12 and 128 bytes.'
+        errorMessage = 'Password must be between 9 and 128 bytes.'
       elseif jobError == 'invalid_credential' then
         errorMessage = 'Saved password data is invalid. Reset it and set up a new password.'
       else
@@ -117,17 +139,18 @@ function adminAuth.create(dependencies)
     end
 
     if not job then return end
+    local action = jobAction
     local complete, stepError = job.step(KDF_STEP_BUDGET_SECONDS)
     if stepError then
       clearJob()
       unlocked = false
+      passwordChangeOpen = false
       mode = 'login'
-      errorMessage = 'Password verification failed. Admin controls remain locked.'
+      errorMessage = 'Password processing failed. Admin controls remain locked.'
       return
     end
     if not complete then return end
 
-    local action = jobAction
     local result = job.getResult()
     clearJob()
     if action == 'setup' then
@@ -138,13 +161,33 @@ function adminAuth.create(dependencies)
       end
       storage:set(result)
       credential = result
+      defaultPasswordActive = false
       unlocked = true
       mode = 'unlocked'
+      errorMessage = ''
+      noticeMessage = ''
+    elseif action == 'password_change' then
+      if type(result) ~= 'string' or result == '' then
+        mode = 'login'
+        errorMessage = 'Password change failed. Log in again to unlock admin controls.'
+        passwordChangeOpen = false
+        return
+      end
+      storage:set(result)
+      credential = result
+      defaultPasswordActive = false
+      unlocked = true
+      mode = 'unlocked'
+      passwordChangeOpen = false
+      newPassword = ''
+      passwordConfirmation = ''
+      noticeMessage = 'Password changed.'
       errorMessage = ''
     elseif result == true then
       unlocked = true
       mode = 'unlocked'
       errorMessage = ''
+      noticeMessage = ''
     else
       unlocked = false
       mode = 'login'
@@ -158,9 +201,11 @@ function adminAuth.create(dependencies)
     if resetConfirmUntil > now() then
       storage:set('')
       credential = ''
+      defaultPasswordActive = true
       resetConfirmUntil = 0
-      errorMessage = ''
-      mode = 'setup'
+      errorMessage = 'Password reset. Sign in with adminpass.'
+      noticeMessage = ''
+      mode = 'login'
       return true
     end
 
@@ -171,6 +216,51 @@ function adminAuth.create(dependencies)
 
   refreshAuthorization()
 
+  local function beginPasswordChange()
+    if not unlocked or job then return false end
+    passwordChangeOpen = true
+    newPassword = ''
+    passwordConfirmation = ''
+    errorMessage = ''
+    noticeMessage = ''
+    return true
+  end
+
+  local function startPasswordChange()
+    if not unlocked or not passwordChangeOpen or job then return false end
+    if newPassword ~= passwordConfirmation then
+      errorMessage = 'New passwords do not match.'
+      return false
+    end
+
+    local newJob, jobError = passwordKdf.startCreate(newPassword)
+    if not newJob then
+      errorMessage = jobError == 'invalid_password_length' and
+        'Password must be between 9 and 128 bytes.' or
+        'Password change could not start. The current password remains active.'
+      return false
+    end
+
+    newPassword = ''
+    passwordConfirmation = ''
+    errorMessage = ''
+    unlocked = false
+    mode = 'password_change_pending'
+    job = newJob
+    jobAction = 'password_change'
+    return true
+  end
+
+  local function cancelPasswordChange()
+    if job then return false end
+    passwordChangeOpen = false
+    newPassword = ''
+    passwordConfirmation = ''
+    errorMessage = ''
+    noticeMessage = ''
+    return true
+  end
+
   return {
     update = update,
     isUnlocked = function () return unlocked end,
@@ -178,25 +268,43 @@ function adminAuth.create(dependencies)
       return {
         mode = mode,
         password = password,
+        newPassword = newPassword,
+        passwordConfirmation = passwordConfirmation,
         error = errorMessage,
+        notice = noticeMessage,
         blockedMessage = blockedMessage,
         allowlistPath = getAllowlistPath(),
         cooldown = cooldown,
         pending = job ~= nil,
         progress = job and job.getProgress() or 0,
-        resetArmed = resetConfirmUntil > now()
+        resetArmed = resetConfirmUntil > now(),
+        defaultPasswordActive = defaultPasswordActive,
+        passwordChangeOpen = passwordChangeOpen
       }
     end,
     setPassword = function (value)
       password = type(value) == 'string' and value or ''
     end,
+    setNewPassword = function (value)
+      newPassword = type(value) == 'string' and value or ''
+    end,
+    setPasswordConfirmation = function (value)
+      passwordConfirmation = type(value) == 'string' and value or ''
+    end,
     startSetup = function () return beginJob('setup', password) end,
     startLogin = function () return beginJob('login', password) end,
+    beginPasswordChange = beginPasswordChange,
+    startPasswordChange = startPasswordChange,
+    cancelPasswordChange = cancelPasswordChange,
     beginPasswordReset = beginPasswordReset,
     lock = function ()
       unlocked = false
       password = ''
+      newPassword = ''
+      passwordConfirmation = ''
+      passwordChangeOpen = false
       errorMessage = ''
+      noticeMessage = ''
       cooldown = 0
       resetConfirmUntil = 0
       refreshAuthorization()

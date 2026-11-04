@@ -55,7 +55,51 @@ assert(openedPath ==
 
 io.open = function () return nil, 'missing file' end
 local missingFile, missingFileError = adminConfig.load()
-io.open = originalOpen
 assert(missingFile == nil and missingFileError == 'allowlist_unavailable')
+
+local scriptConfigPath =
+  'C:\\Users\\Test\\Documents\\Assetto Corsa\\cfg\\extension\\state\\lua\\apps\\FlagControlApp\\admin_steam_ids.ini'
+local generatedPath =
+  'C:\\Users\\Test\\Documents\\Assetto Corsa\\cfg\\extension\\state\\lua\\apps\\FlagControlApp_admin_steam_ids.ini'
+local generatedContents
+io.open = function (path, mode)
+  if path == scriptConfigPath and mode == 'rb' then
+    return nil, 'missing script config directory'
+  end
+  if path == generatedPath and mode == 'rb' then
+    return nil, 'missing allowlist'
+  end
+  if path == generatedPath and mode == 'wb' then
+    return {
+      write = function (_, contents)
+        generatedContents = contents
+        return true
+      end,
+      close = function () return true end
+    }
+  end
+  error('unexpected allowlist file access: ' .. path .. ' (' .. mode .. ')')
+end
+assert(adminConfig.getPath() == generatedPath)
+local generated, generatedError = adminConfig.load()
+assert(generated == nil and generatedError == 'empty_allowlist')
+assert(generatedContents and generatedContents:find('Steam profile ID', 1, true))
+
+io.open = function (path, mode)
+  if path == scriptConfigPath and mode == 'rb' then
+    return nil, 'missing script config directory'
+  end
+  if path == generatedPath and mode == 'rb' then
+    return {
+      read = function () return '76561190000000002\n' end,
+      close = function () return true end
+    }
+  end
+  error('unexpected allowlist file access: ' .. path .. ' (' .. mode .. ')')
+end
+local existingGenerated, existingGeneratedError = adminConfig.load()
+assert(existingGeneratedError == nil)
+assert(existingGenerated['76561190000000002'])
+io.open = originalOpen
 
 print('Admin config tests passed')

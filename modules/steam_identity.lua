@@ -11,12 +11,11 @@ function steamIdentity.parse(contents)
 
   local found
   for candidate in contents:gmatch('%d+') do
-    if #candidate >= 17 then
-      if not adminConfig.isSteamID64(candidate) then
-        return nil, 'identity_unavailable'
-      end
+    if adminConfig.isSteamID64(candidate) then
       if found then return nil, 'identity_ambiguous' end
       found = candidate
+    elseif #candidate >= 17 and candidate:sub(1, 7) == '7656119' then
+        return nil, 'identity_unavailable'
     end
   end
 

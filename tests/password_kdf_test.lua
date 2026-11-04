@@ -54,6 +54,12 @@ assert(wrongPasswordJob.getResult() == false)
 
 local shortPassword, shortPasswordError = passwordKdf.startCreate('short')
 assert(shortPassword == nil and shortPasswordError == 'invalid_password_length')
+local defaultPasswordJob, defaultPasswordError =
+  passwordKdf.startCreate('adminpass', fakeCrypto, fakePbkdf2)
+assert(defaultPasswordError == nil and defaultPasswordJob)
+local unavailableCryptoJob, unavailableCryptoError =
+  passwordKdf.startCreate('adminpass')
+assert(unavailableCryptoJob == nil and unavailableCryptoError == 'crypto_unavailable')
 local malformedCredential, credentialError =
   passwordKdf.startVerify(password, 'malformed', fakePbkdf2)
 assert(malformedCredential == nil and credentialError == 'invalid_credential')

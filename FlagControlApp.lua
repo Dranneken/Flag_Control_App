@@ -49,6 +49,7 @@ setOverrideState('manualBlueActive', false)
 
 local onlinePeers = {}
 local presenceTimer = 0
+local wasOnlineRace = false
 local lobbyMessageStatus = 'Join an online lobby to discover peers'
 
 local adminConfig = require('modules/admin_config')
@@ -84,6 +85,33 @@ local fieldFlags = require('modules/field_flags').create({
   network = function () return network end
 })
 
+local flagNotifications = require('modules/flag_notifications').create({
+  flagNone = FLAG_NONE
+})
+
+local penalties = require('modules/penalties').create({
+  isAdminUnlocked = isAdminUnlocked,
+  network = function () return network end,
+  storageFactory = function (key, defaultValue) return ac.storage(key, defaultValue) end,
+  getLocalSessionID = function ()
+    local car = ac.getCar(0)
+    return car and car.sessionID or -1
+  end,
+  getLocalDriverName = function ()
+    return ac.getDriverName(0) or 'Race Control'
+  end,
+  getDriverLapCount = function (sessionID, carIndex)
+    local sim = ac.getSim()
+    for index = 0, (sim.carsCount or 0) - 1 do
+      local car = ac.getCar(index)
+      if car and ((sessionID >= 0 and car.sessionID == sessionID) or index == carIndex) then
+        return car.sessionLapCount or car.lapCount or 0
+      end
+    end
+    return nil
+  end
+})
+
 local raceControlUI = require('modules/race_control_ui').create({
   fieldFlags = fieldFlags,
   blueFlags = blueFlags,
@@ -113,12 +141,82 @@ network = require('modules/network').create({
   applyBlueClassRule = blueFlags.applyBlueClassRule,
   applyBlueAlert = blueFlags.applyAlert,
   isControllableFieldFlag = fieldFlags.isControllableFieldFlag,
-  applyFieldFlag = fieldFlags.apply
+  isAdminUnlocked = isAdminUnlocked,
+  getCurrentFieldFlag = fieldFlags.getFlag,
+  flagNone = FLAG_NONE,
+  applyFieldFlag = fieldFlags.apply,
+  applyPenaltyEvent = penalties.applyPenaltyEvent,
+  applyPenaltyPolicy = penalties.applyPolicyEvent,
+  getPenaltyRecords = penalties.getRecords,
+  getPenaltyPolicies = penalties.getPolicies
+})
+
+local penaltyFeedUI = require('modules/penalty_feed_ui').create({
+  penalties = penalties,
+  isAdminUnlocked = isAdminUnlocked,
+  getDrivers = function ()
+    local _, allDrivers = blueFlags.collectDriverBlueStates()
+    return allDrivers
+  end,
+  getLocalDriverName = function () return ac.getDriverName(0) or 'Race Control' end,
+  colors = {
+    yellow = FCA_YELLOW,
+    settingsText = FCA_SETTINGS_TEXT,
+    muted = FCA_MUTED_TEXT,
+    danger = DANGER_RED,
+    success = SUCCESS_GREEN
+  }
+})
+
+local penaltyNotifications = require('modules/penalty_notifications').create({
+  duration = 15,
+  isLocalRecord = function (record)
+    local localCar = ac.getCar(0)
+    local localSessionID = localCar and localCar.sessionID or -1
+    if localSessionID >= 0 and record.driverSessionID and record.driverSessionID >= 0 then
+      return record.driverSessionID == localSessionID
+    end
+
+    local localName = string.lower(ac.getDriverName(0) or 'Race Control')
+    return string.lower(record.driverName or '') == localName
+  end
+})
+
+local penaltyNoticeUI = require('modules/penalty_notice_ui').create({
+  getCurrent = penaltyNotifications.getCurrent,
+  colors = {
+    yellow = FCA_YELLOW
+  }
+})
+
+local companionWindowLock = require('modules/companion_window_lock')
+
+local flagNoticeUI = require('modules/flag_notice_ui').create({
+  getCurrent = flagNotifications.getCurrent,
+  flags = {
+    none = FLAG_NONE,
+    green = FLAG_GREEN,
+    yellow = FLAG_YELLOW,
+    red = FLAG_RED
+  },
+  colors = {
+    yellow = FCA_YELLOW,
+    green = SUCCESS_GREEN,
+    red = DANGER_RED
+  }
 })
 
 function script.update(dt)
   local sim = ac.getSim()
   adminAuth.update(dt)
+  flagNotifications.update(
+    fieldFlags.getRevision(),
+    fieldFlags.getFlag(),
+    fieldFlags.getSenderName()
+  )
+  penaltyNotifications.update(penalties.getRecords(), dt)
+  penalties.update()
+  penaltyNotifications.update(penalties.getRecords(), 0)
 
   local localCar = ac.getCar(0)
   local localName = ac.getDriverName(0) or ''
@@ -134,10 +232,17 @@ function script.update(dt)
   if not sim.isOnlineRace then
     lobbyMessageStatus = 'Singleplayer / Offline Session'
     presenceTimer = 0
+    wasOnlineRace = false
     for sessionID in pairs(onlinePeers) do
       onlinePeers[sessionID] = nil
     end
     return
+  end
+
+  if not wasOnlineRace then
+    wasOnlineRace = true
+    network.requestFieldFlagSync()
+    network.requestPenaltySync()
   end
 
   lobbyMessageStatus = sim.directMessagingAvailable and 'Online messaging available' or 'Using AC compatibility messaging'
@@ -171,8 +276,13 @@ local adminUI = require('modules/ui').create({
   isAdminUnlocked = isAdminUnlocked,
   getAdminState = adminAuth.getState,
   setPassword = adminAuth.setPassword,
+  setNewPassword = adminAuth.setNewPassword,
+  setPasswordConfirmation = adminAuth.setPasswordConfirmation,
   startSetup = adminAuth.startSetup,
   startLogin = adminAuth.startLogin,
+  beginPasswordChange = adminAuth.beginPasswordChange,
+  startPasswordChange = adminAuth.startPasswordChange,
+  cancelPasswordChange = adminAuth.cancelPasswordChange,
   beginPasswordReset = adminAuth.beginPasswordReset,
   lockAdmin = adminAuth.lock
 })
@@ -180,15 +290,40 @@ local adminUI = require('modules/ui').create({
 function script.windowAdmin(dt)
   ui.setNextTextBold()
   ui.pushStyleColor(ui.StyleColor.Text, FCA_YELLOW)
-  ui.header('RACE CONTROL')
+  ui.header('FLAG CONTROL')
   ui.popStyleColor()
   adminUI.drawAdminHeader()
   ui.separator()
 
-  if not isAdminUnlocked() then
-    adminUI.drawAdminAccessPage()
-    return
+  local adminState = adminAuth.getState()
+  local availableSpace = ui.availableSpace()
+  local panelGap = 12
+  local panelSize = vec2(math.floor((availableSpace.x - panelGap) / 2), availableSpace.y)
+  if ui.beginChild('FlagControlPanel', panelSize, true) then
+    if adminState.passwordChangeOpen then
+      adminUI.drawPasswordChangePage()
+    elseif not isAdminUnlocked() then
+      adminUI.drawAdminAccessPage()
+    else
+      raceControlUI.drawTabs()
+    end
   end
+  ui.endChild()
+  ui.sameLine(0, panelGap)
+  if ui.beginChild('PenaltyFeedPanel', panelSize, true) then
+    penaltyFeedUI.draw()
+  end
+  ui.endChild()
+end
 
-  raceControlUI.drawTabs()
+function script.windowPenaltyNotice(dt)
+  companionWindowLock.update('Penalty Notice', 'penalty_notice')
+  penaltyNoticeUI.draw()
+  companionWindowLock.drawStatus('penalty_notice')
+end
+
+function script.windowFlagNotice(dt)
+  companionWindowLock.update('Flag Notice', 'flag_notice')
+  flagNoticeUI.draw()
+  companionWindowLock.drawStatus('flag_notice')
 end
